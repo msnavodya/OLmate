@@ -50,7 +50,13 @@ export const chatService = {
     });
 
     if (!response.ok || !response.body) {
-      throw new Error('Failed to start chat stream');
+      const message = await getFetchErrorMessage(response);
+      if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
+      throw new Error(message);
     }
 
     const reader = response.body.getReader();
@@ -77,3 +83,16 @@ export const chatService = {
     }
   },
 };
+
+async function getFetchErrorMessage(response: Response) {
+  try {
+    const data = await response.json();
+    if (typeof data.detail === 'string') {
+      return data.detail;
+    }
+  } catch {
+    // Some stream failures do not return JSON.
+  }
+
+  return `Chat request failed (${response.status})`;
+}

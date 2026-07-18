@@ -1,21 +1,91 @@
+import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bell, CheckCircle2, KeyRound, LogOut, Mail, Shield, User } from 'lucide-react';
-
-const upcomingFeatures = [
-  { label: 'Edit profile information', icon: User },
-  { label: 'Change password', icon: KeyRound },
-  { label: 'Notification preferences', icon: Bell },
-  { label: 'Study goals and preferences', icon: CheckCircle2 },
-];
+import {
+  AlertCircle,
+  ArrowLeft,
+  CheckCircle2,
+  KeyRound,
+  Loader,
+  LogOut,
+  Mail,
+  Save,
+  Shield,
+  User,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile, changePassword, refreshUser, isLoading } = useAuth();
   const navigate = useNavigate();
+  const [name, setName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [profileMessage, setProfileMessage] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      setName(user.name);
+      setEmail(user.email);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleProfileSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setProfileError('');
+    setProfileMessage('');
+
+    if (name.trim().length < 2) {
+      setProfileError('Name must be at least 2 characters.');
+      return;
+    }
+
+    try {
+      await updateProfile(name, email);
+      setProfileMessage('Profile updated successfully.');
+    } catch (error) {
+      setProfileError(getErrorMessage(error, 'Could not update your profile.'));
+    }
+  };
+
+  const handlePasswordSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setPasswordError('');
+    setPasswordMessage('');
+
+    if (newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match.');
+      return;
+    }
+
+    try {
+      await changePassword(currentPassword, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordMessage('Password changed successfully.');
+    } catch (error) {
+      setPasswordError(getErrorMessage(error, 'Could not change your password.'));
+    }
   };
 
   return (
@@ -59,7 +129,7 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_0.85fr]">
+        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_0.9fr]">
           <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-6 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700">
@@ -67,35 +137,77 @@ export default function ProfilePage() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-slate-950">Account details</h2>
-                <p className="text-sm text-slate-500">Your saved OL Mate identity.</p>
+                <p className="text-sm text-slate-500">Keep your student identity up to date.</p>
               </div>
             </div>
 
-            <div className="space-y-4">
-              <ProfileField icon={User} label="Name" value={user?.name || ''} />
-              <ProfileField icon={Mail} label="Email" value={user?.email || ''} />
-              <ProfileField icon={Shield} label="Role" value={user?.role || 'student'} capitalize />
-            </div>
+            <form onSubmit={handleProfileSubmit} className="space-y-4">
+              <ProfileInput icon={User} label="Name" value={name} onChange={setName} autoComplete="name" />
+              <ProfileInput icon={Mail} label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />
+
+              {profileError && <StatusMessage tone="error" message={profileError} />}
+              {profileMessage && <StatusMessage tone="success" message={profileMessage} />}
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-cyan-600 px-4 font-bold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {isLoading ? <Loader size={18} className="animate-spin" /> : <Save size={18} />}
+                Save profile
+              </button>
+            </form>
           </section>
 
           <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-950">Coming soon</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              These account tools are prepared for the next version of the student workspace.
-            </p>
-            <div className="mt-6 space-y-3">
-              {upcomingFeatures.map((feature) => {
-                const Icon = feature.icon;
-                return (
-                  <div key={feature.label} className="flex items-center gap-3 rounded-lg bg-slate-50 p-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
-                      <Icon size={18} />
-                    </span>
-                    <span className="text-sm font-semibold text-slate-600">{feature.label}</span>
-                  </div>
-                );
-              })}
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                <KeyRound size={20} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-950">Password</h2>
+                <p className="text-sm text-slate-500">Update your sign-in password securely.</p>
+              </div>
             </div>
+
+            <form onSubmit={handlePasswordSubmit} className="space-y-4">
+              <ProfileInput
+                icon={KeyRound}
+                label="Current password"
+                type="password"
+                value={currentPassword}
+                onChange={setCurrentPassword}
+                autoComplete="current-password"
+              />
+              <ProfileInput
+                icon={Shield}
+                label="New password"
+                type="password"
+                value={newPassword}
+                onChange={setNewPassword}
+                autoComplete="new-password"
+              />
+              <ProfileInput
+                icon={CheckCircle2}
+                label="Confirm new password"
+                type="password"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                autoComplete="new-password"
+              />
+
+              {passwordError && <StatusMessage tone="error" message={passwordError} />}
+              {passwordMessage && <StatusMessage tone="success" message={passwordMessage} />}
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {isLoading ? <Loader size={18} className="animate-spin" /> : <KeyRound size={18} />}
+                Change password
+              </button>
+            </form>
           </section>
         </div>
       </div>
@@ -103,16 +215,20 @@ export default function ProfilePage() {
   );
 }
 
-function ProfileField({
+function ProfileInput({
   icon: Icon,
   label,
   value,
-  capitalize = false,
+  onChange,
+  type = 'text',
+  autoComplete,
 }: {
-  icon: typeof User;
+  icon: LucideIcon;
   label: string;
   value: string;
-  capitalize?: boolean;
+  onChange: (value: string) => void;
+  type?: string;
+  autoComplete?: string;
 }) {
   return (
     <label className="block">
@@ -120,12 +236,44 @@ function ProfileField({
       <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3">
         <Icon size={18} className="text-slate-400" />
         <input
-          type="text"
+          type={type}
           value={value}
-          disabled
-          className={`w-full bg-transparent px-3 py-3 text-slate-600 ${capitalize ? 'capitalize' : ''}`}
+          onChange={(event) => onChange(event.target.value)}
+          autoComplete={autoComplete}
+          required
+          className="w-full bg-transparent px-3 py-3 text-slate-900 placeholder:text-slate-400"
         />
       </div>
     </label>
   );
+}
+
+function StatusMessage({ tone, message }: { tone: 'success' | 'error'; message: string }) {
+  const isSuccess = tone === 'success';
+  const Icon = isSuccess ? CheckCircle2 : AlertCircle;
+  return (
+    <div className={`flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold ${isSuccess ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+      <Icon size={17} />
+      {message}
+    </div>
+  );
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof error.response === 'object' &&
+    error.response !== null &&
+    'data' in error.response &&
+    typeof error.response.data === 'object' &&
+    error.response.data !== null &&
+    'detail' in error.response.data &&
+    typeof error.response.data.detail === 'string'
+  ) {
+    return error.response.data.detail;
+  }
+
+  return fallback;
 }

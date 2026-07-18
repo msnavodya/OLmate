@@ -78,69 +78,115 @@ def test_auth_functions():
 async def run_auth_endpoints():
     """Test auth endpoints using FastAPI TestClient"""
     print("\n[TEST] Auth Endpoints")
-    
-    try:
-        from httpx import ASGITransport, AsyncClient
-        from main import app
-        
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as ac:
-            # Test register
-            endpoint_email = "endpoint@example.com"
 
-            register_response = await ac.post(
-                "/api/auth/register",
-                json={
-                    "name": "Endpoint User",
-                    "email": endpoint_email,
-                    "password": "password123"
-                }
-            )
-            
-            if register_response.status_code == 200:
-                register_data = register_response.json()
-                print(f"  [OK] User registration successful")
-                print(f"  [OK] User ID: {register_data['user']['id']}")
-                print(f"  [OK] Email: {register_data['user']['email']}")
-                
-                # Test login
-                login_response = await ac.post(
-                    "/api/auth/login",
-                    json={
-                        "email": endpoint_email,
-                        "password": "password123"
-                    }
-                )
-                
-                if login_response.status_code == 200:
-                    login_data = login_response.json()
-                    print(f"  [OK] Login successful")
-                    print(f"  [OK] Token received: {login_data['access_token'][:20]}...")
+    from httpx import ASGITransport, AsyncClient
+    from main import app
 
-                    chat_response = await ac.post(
-                        "/api/chat/send",
-                        json={
-                            "user_id": register_data["user"]["id"],
-                            "question": "Explain photosynthesis",
-                            "subject": "Science"
-                        }
-                    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # Test register
+        endpoint_email = "endpoint@example.com"
 
-                    if chat_response.status_code == 200:
-                        chat_data = chat_response.json()
-                        if "placeholder response" in chat_data["answer"].lower():
-                            print("  [ERROR] Chat returned placeholder response")
-                        else:
-                            print("  [OK] Chat response generated successfully")
-                    else:
-                        print(f"  [ERROR] Chat failed: {chat_response.json()}")
-                else:
-                    print(f"  [ERROR] Login failed: {login_response.json()}")
-            else:
-                print(f"  [ERROR] Registration failed: {register_response.json()}")
-                
-    except Exception as e:
-        print(f"  [INFO] Skipping async endpoint tests: {str(e)}")
+        register_response = await ac.post(
+            "/api/auth/register",
+            json={
+                "name": "Endpoint User",
+                "email": endpoint_email,
+                "password": "password123"
+            }
+        )
+
+        assert register_response.status_code == 200, register_response.text
+        register_data = register_response.json()
+        print(f"  [OK] User registration successful")
+        print(f"  [OK] User ID: {register_data['user']['id']}")
+        print(f"  [OK] Email: {register_data['user']['email']}")
+
+        # Test login
+        login_response = await ac.post(
+            "/api/auth/login",
+            json={
+                "email": endpoint_email,
+                "password": "password123"
+            }
+        )
+
+        assert login_response.status_code == 200, login_response.text
+        login_data = login_response.json()
+        print(f"  [OK] Login successful")
+        print(f"  [OK] Token received: {login_data['access_token'][:20]}...")
+        auth_headers = {"Authorization": f"Bearer {login_data['access_token']}"}
+
+        profile_response = await ac.get("/api/auth/me", headers=auth_headers)
+        assert profile_response.status_code == 200, profile_response.text
+        print("  [OK] Profile loaded successfully")
+
+        update_response = await ac.patch(
+            "/api/auth/me",
+            headers=auth_headers,
+            json={
+                "name": "Endpoint User Updated",
+                "email": "endpoint-updated@example.com",
+            },
+        )
+        assert update_response.status_code == 200, update_response.text
+        print("  [OK] Profile update successful")
+
+        password_response = await ac.post(
+            "/api/auth/me/password",
+            headers=auth_headers,
+            json={
+                "current_password": "password123",
+                "new_password": "newpassword123",
+            },
+        )
+        assert password_response.status_code == 200, password_response.text
+        print("  [OK] Password change successful")
+
+        chat_response = await ac.post(
+            "/api/chat/send",
+            headers=auth_headers,
+            json={
+                "user_id": register_data["user"]["id"],
+                "question": "Explain photosynthesis",
+                "subject": "Science"
+            }
+        )
+
+        assert chat_response.status_code == 200, chat_response.text
+        chat_data = chat_response.json()
+        assert "placeholder response" not in chat_data["answer"].lower()
+        print("  [OK] Chat response generated successfully")
+
+        quiz_response = await ac.post(
+            "/api/quiz/generate",
+            headers=auth_headers,
+            json={
+                "user_id": register_data["user"]["id"],
+                "subject": "Science",
+                "topic": "photosynthesis",
+                "question_count": 3,
+            },
+        )
+        assert quiz_response.status_code == 200, quiz_response.text
+        quiz_data = quiz_response.json()
+        assert len(quiz_data["questions"]) == 3
+        print("  [OK] Quiz generated successfully")
+
+        submit_response = await ac.post(
+            f"/api/quiz/{quiz_data['id']}/submit",
+            headers=auth_headers,
+            json={
+                "user_id": register_data["user"]["id"],
+                "answers": {
+                    question["id"]: question["correct_option"]
+                    for question in quiz_data["questions"]
+                },
+            },
+        )
+        assert submit_response.status_code == 200, submit_response.text
+        assert submit_response.json()["score"] == 3
+        print("  [OK] Quiz submission scored successfully")
 
 def test_auth_endpoints():
     """Pytest-compatible wrapper for async auth endpoint checks"""

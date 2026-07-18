@@ -2,8 +2,12 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from config import settings
 import os
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 # Use argon2 for password hashing (more reliable than bcrypt)
 try:
@@ -66,3 +70,20 @@ def decode_access_token(token: str):
         return user_id
     except JWTError:
         return None
+
+def get_current_user_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> str:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    user_id = decode_access_token(credentials.credentials)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+    return user_id

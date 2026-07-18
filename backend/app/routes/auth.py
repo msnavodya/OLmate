@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import timedelta
 from bson.objectid import ObjectId
-from app.models.user import UserRegister, UserLogin, TokenResponse
-from app.auth.jwt_handler import hash_password, verify_password, create_access_token
+from app.models.user import PasswordChange, UserRegister, UserLogin, UserResponse, UserUpdate, TokenResponse
+from app.auth.jwt_handler import get_current_user_id, hash_password, verify_password, create_access_token
 from app.database.mongodb import get_database
 from config import settings
 
@@ -14,9 +14,23 @@ def get_db():
 @router.post("/register", response_model=TokenResponse)
 async def register(user: UserRegister, db=Depends(get_db)):
     users_collection = db["users"]
+    email = user.email.lower()
+    name = user.name.strip()
+
+    if len(name) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Name must be at least 2 characters"
+        )
+
+    if len(user.password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters"
+        )
     
     # Check if user exists
-    existing_user = users_collection.find_one({"email": user.email})
+    existing_user = users_collection.find_one({"email": email})
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -26,8 +40,8 @@ async def register(user: UserRegister, db=Depends(get_db)):
     # Create new user
     hashed_password = hash_password(user.password)
     new_user = {
-        "name": user.name,
-        "email": user.email,
+        "name": name,
+        "email": email,
         "password_hash": hashed_password,
         "role": user.role,
         "created_at": __import__("datetime").datetime.utcnow()
@@ -46,8 +60,8 @@ async def register(user: UserRegister, db=Depends(get_db)):
         access_token=access_token,
         user={
             "id": user_id,
-            "name": user.name,
-            "email": user.email,
+            "name": name,
+            "email": email,
             "role": user.role
         }
     )
@@ -55,9 +69,10 @@ async def register(user: UserRegister, db=Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 async def login(credentials: UserLogin, db=Depends(get_db)):
     users_collection = db["users"]
+    email = credentials.email.lower()
     
     # Find user
-    user = users_collection.find_one({"email": credentials.email})
+    user = users_collection.find_one({"email": email})
     if not user or not verify_password(credentials.password, user["password_hash"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -78,4 +93,94 @@ async def login(credentials: UserLogin, db=Depends(get_db)):
             "email": user["email"],
             "role": user["role"]
         }
+    )
+
+@router.get("/me", response_model=UserResponse)
+async def get_profile(current_user_id: str = Depends(get_current_user_id), db=Depends(get_db)):
+    user = _find_user_by_id(db, current_user_id)
+    return _to_user_response(user)
+
+@router.patch("/me", response_model=UserResponse)
+async def update_profile(
+    updates: UserUpdate,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    users_collection = db["users"]
+    user = _find_user_by_id(db, current_user_id)
+    changes = {}
+
+    if updates.name is not None:
+        name = updates.name.strip()
+        if len(name) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Name must be at least 2 characters",
+            )
+        changes["name"] = name
+
+    if updates.email is not None:
+        email = updates.email.lower()
+        existing_user = users_collection.find_one({"email": email})
+        if existing_user and str(existing_user["_id"]) != current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered",
+            )
+        changes["email"] = email
+
+    if changes:
+        users_collection.update_one({"_id": user["_id"]}, {"$set": changes})
+        user.update(changes)
+
+    return _to_user_response(user)
+
+@router.post("/me/password")
+async def change_password(
+    payload: PasswordChange,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    if len(payload.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters",
+        )
+
+    users_collection = db["users"]
+    user = _find_user_by_id(db, current_user_id)
+    if not verify_password(payload.current_password, user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"password_hash": hash_password(payload.new_password)}},
+    )
+    return {"message": "Password updated successfully"}
+
+def _find_user_by_id(db, user_id: str):
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user token",
+        )
+
+    user = db["users"].find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    return user
+
+def _to_user_response(user) -> UserResponse:
+    return UserResponse(
+        id=str(user["_id"]),
+        name=user["name"],
+        email=user["email"],
+        role=user["role"],
+        created_at=user.get("created_at"),
     )

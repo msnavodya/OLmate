@@ -19,6 +19,14 @@ class UserResponse(BaseModel):
     role: str
     created_at: Optional[datetime] = None
 
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

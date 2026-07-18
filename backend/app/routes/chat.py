@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from bson.objectid import ObjectId
 from app.models.chat import ChatMessage, ChatResponse
 from app.database.mongodb import get_database
-from app.auth.jwt_handler import decode_access_token
+from app.auth.jwt_handler import get_current_user_id
 from app.chatbot.openai_service import get_ai_response, stream_ai_response
 from app.rag.rag_service import retrieve_relevant_context
 import datetime
@@ -14,18 +14,14 @@ router = APIRouter()
 def get_db():
     return get_database()
 
-def get_current_user(token: str):
-    user_id = decode_access_token(token)
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
-        )
-    return user_id
-
 @router.post("/send", response_model=ChatResponse)
-async def send_chat(message: ChatMessage, db=Depends(get_db)):
+async def send_chat(
+    message: ChatMessage,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     _validate_chat_message(message)
+    _ensure_user_owns_resource(message.user_id, current_user_id)
 
     chats_collection = db["chats"]
     created_at = datetime.datetime.utcnow()
@@ -54,8 +50,13 @@ async def send_chat(message: ChatMessage, db=Depends(get_db)):
 
 
 @router.post("/stream")
-async def stream_chat(message: ChatMessage, db=Depends(get_db)):
+async def stream_chat(
+    message: ChatMessage,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     _validate_chat_message(message)
+    _ensure_user_owns_resource(message.user_id, current_user_id)
 
     def event_stream():
         answer_parts = []
@@ -115,7 +116,12 @@ def _json_line(payload: dict) -> str:
     return json.dumps(payload, default=str) + "\n"
 
 @router.get("/history/{user_id}")
-async def get_chat_history(user_id: str, db=Depends(get_db)):
+async def get_chat_history(
+    user_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    _ensure_user_owns_resource(user_id, current_user_id)
     chats_collection = db["chats"]
     
     chats = list(chats_collection.find(
@@ -135,9 +141,19 @@ async def get_chat_history(user_id: str, db=Depends(get_db)):
     ]
 
 @router.delete("/history/{chat_id}")
-async def delete_chat(chat_id: str, db=Depends(get_db)):
+async def delete_chat(
+    chat_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    if not ObjectId.is_valid(chat_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid chat ID"
+        )
+
     chats_collection = db["chats"]
-    result = chats_collection.delete_one({"_id": ObjectId(chat_id)})
+    result = chats_collection.delete_one({"_id": ObjectId(chat_id), "user_id": current_user_id})
     
     if result.deleted_count == 0:
         raise HTTPException(
@@ -146,3 +162,10 @@ async def delete_chat(chat_id: str, db=Depends(get_db)):
         )
     
     return {"message": "Chat deleted successfully"}
+
+def _ensure_user_owns_resource(resource_user_id: str, current_user_id: str):
+    if resource_user_id != current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only access your own chats",
+        )

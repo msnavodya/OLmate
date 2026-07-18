@@ -1,68 +1,81 @@
-# OL Mate - AI-Powered Learning Assistant for Sri Lankan O/L Students
+# OL Mate
 
-OL Mate is a full-stack AI-powered web application designed for Sri Lankan GCE Ordinary Level (O/L) students. It provides instant, syllabus-based academic assistance through a conversational chatbot powered by OpenAI GPT and Retrieval-Augmented Generation (RAG).
+OL Mate is a full-stack study web app for Sri Lankan GCE Ordinary Level
+students. It includes authentication, a realtime AI tutor, saved chat history,
+knowledge-base retrieval, quiz generation, scoring, and admin document upload.
 
-## 🎯 Features
+## What Works Now
 
-### Student Features
-- **User Authentication**: Secure registration and login with JWT
-- **AI Chat Interface**: Ask questions and get instant responses
-- **Subject Selection**: 14 O/L subjects supported
-- **Chat History**: View and manage previous conversations
-- **Responsive Design**: Mobile, tablet, and desktop friendly
+- Student registration and login with JWT.
+- Responsive dashboard, profile, chat, and quiz pages.
+- Realtime ChatGPT-style streaming answers.
+- O/L subject selection across 14 app subjects.
+- Saved chat history with delete support.
+- Knowledge-base retrieval from `.md`, `.txt`, and `.pdf` files.
+- Starter knowledge pack in `knowledge_base/`.
+- Quiz generation, answer submission, scoring, and explanations.
+- Admin user listing, document upload/listing, and analytics.
+- MongoDB support with local in-memory fallback for development.
 
-### AI Features (Phase 2+)
-- Syllabus-focused explanations
-- Problem-solving assistance
-- Past-paper practice
-- Quiz generation
-- Revision notes
+## Tech Stack
 
-### Admin Features (Phase 4)
-- User management
-- Document uploads (PDFs, notes, past papers)
-- Analytics dashboard
-- Content moderation
+| Layer | Technology |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, Tailwind CSS |
+| Backend | FastAPI, Python, Uvicorn |
+| Database | MongoDB Atlas or local in-memory development database |
+| AI | OpenAI API when configured, local tutor fallback otherwise |
+| Knowledge | Local file retrieval from `knowledge_base/` |
 
-## 🏗️ Project Structure
+## Project Structure
 
+```text
+OLmate/
+  backend/
+    app/
+      auth/
+      chatbot/
+      database/
+      models/
+      rag/
+      routes/
+    main.py
+    config.py
+    requirements.txt
+  frontend/
+    src/
+      contexts/
+      pages/
+      services/
+      utils/
+    package.json
+  knowledge_base/
+    mathematics.md
+    science.md
+    english.md
+    ...
 ```
-ol-mate/
-├── frontend/                # React 19 + TypeScript + Vite
-│   ├── src/
-│   │   ├── pages/          # DashboardPage, ChatPage, ProfilePage
-│   │   ├── components/     # Reusable UI components
-│   │   ├── services/       # API client & services
-│   │   ├── contexts/       # Auth context
-│   │   ├── utils/          # Constants & helpers
-│   │   └── App.tsx         # Main app component
-│   ├── package.json
-│   └── vite.config.ts
-├── backend/                # FastAPI + Python
-│   ├── app/
-│   │   ├── auth/           # JWT authentication
-│   │   ├── routes/         # API endpoints
-│   │   ├── models/         # Pydantic models
-│   │   ├── database/       # MongoDB connection
-│   │   ├── chatbot/        # OpenAI integration
-│   │   └── rag/            # RAG implementation
-│   ├── config.py           # Configuration
-│   ├── main.py             # FastAPI app
-│   ├── requirements.txt
-│   └── .env.example
-└── knowledge_base/         # RAG knowledge base
 
+## Local Setup
+
+### Backend
+
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
+python main.py
 ```
 
-## 🚀 Quick Start
+Backend:
+`http://localhost:8000`
 
-### Prerequisites
-- Node.js 18+
-- Python 3.12+
-- MongoDB Atlas account
-- OpenAI API key
+API docs:
+`http://localhost:8000/docs`
 
-### Frontend Setup
+### Frontend
 
 ```bash
 cd frontend
@@ -70,31 +83,47 @@ npm install
 npm run dev
 ```
 
-Frontend runs on `http://localhost:5173`
+Frontend:
+`http://localhost:5173`
 
-### Backend Setup
+## Environment Variables
 
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+Frontend `.env`:
 
-# Create .env file
-cp .env.example .env
-# Update with your credentials
-
-python main.py
+```env
+VITE_API_URL=http://localhost:8000/api
 ```
 
-Backend runs on `http://localhost:8000`
+Backend `.env`:
 
-API documentation: `http://localhost:8000/docs`
+```env
+MONGODB_URL=mongodb+srv://user:password@cluster.mongodb.net/olmate
+DATABASE_NAME=olmate
+SECRET_KEY=change-this-to-a-long-random-secret
+OPENAI_API_KEY=sk-your-openai-api-key
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://your-frontend-domain.com
+KNOWLEDGE_BASE_PATH=../knowledge_base
+```
 
-## 📚 O/L Subjects Supported
+`OPENAI_API_KEY` is optional for development. If it is missing, OL Mate uses a
+local deterministic tutor so the app remains usable.
 
+## Knowledge Base
+
+The app reads files from `knowledge_base/` automatically.
+
+Supported file types:
+- `.md`
+- `.txt`
+- `.pdf`
+
+Add subject notes, textbook summaries, teacher notes, or original revision
+material there. The chat bot and quiz generator will retrieve relevant chunks
+from those files.
+
+The repository includes a starter pack for:
 - Mathematics
-- Science (Biology, Physics, Chemistry)
+- Science
 - English
 - Sinhala
 - Tamil
@@ -108,126 +137,66 @@ API documentation: `http://localhost:8000/docs`
 - Geography
 - Civic Education
 
-## 🔐 Authentication
+## Main API Endpoints
 
-- JWT-based authentication
-- Bcrypt password hashing
-- Secure token storage
-- Auto-logout on token expiration
+Authentication:
+- `POST /api/auth/register`
+- `POST /api/auth/login`
 
-## 💾 Database
+Chat:
+- `POST /api/chat/send`
+- `POST /api/chat/stream`
+- `GET /api/chat/history/{user_id}`
+- `DELETE /api/chat/history/{chat_id}`
 
-**MongoDB Collections:**
-- `users` - Student and admin profiles
-- `chats` - Conversation history
-- `documents` - Uploaded study materials
+Quiz:
+- `POST /api/quiz/generate`
+- `POST /api/quiz/{quiz_id}/submit`
+- `GET /api/quiz/history/{user_id}`
 
-## 🤖 AI Integration
+Admin:
+- `GET /api/admin/users`
+- `POST /api/admin/documents/upload`
+- `GET /api/admin/documents`
+- `GET /api/admin/analytics`
 
-- **LLM**: OpenAI GPT-4 / GPT-5
-- **RAG**: ChromaDB for embeddings
-- **Framework**: LangChain for orchestration
+## Build And Test
 
-## 📋 Development Phases
+Frontend production build:
 
-### Phase 1: Core App ✓
-- Authentication (Register, Login)
-- Dashboard
-- Chat UI
-- Subject selector
-- Responsive layout
-
-### Phase 2: AI Features (In Progress)
-- OpenAI API integration
-- Chat history persistence
-- Streaming responses
-- Feedback system
-
-### Phase 3: Knowledge Base
-- PDF upload & processing
-- ChromaDB embeddings
-- RAG context retrieval
-- Syllabus-grounded answers
-
-### Phase 4: Admin & Analytics
-- Admin dashboard
-- User management
-- Document management
-- Usage analytics
-
-## 🛠️ Technology Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui |
-| Backend | FastAPI, Python 3.12, Uvicorn |
-| Database | MongoDB Atlas |
-| AI/ML | OpenAI GPT, ChromaDB, LangChain |
-| Auth | JWT, Bcrypt |
-| Deployment | Vercel (Frontend), Render (Backend) |
-
-## 📖 API Endpoints
-
-### Authentication
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login user
-
-### Chat
-- `POST /api/chat/send` - Send message to AI
-- `GET /api/chat/history/{user_id}` - Get chat history
-- `DELETE /api/chat/history/{chat_id}` - Delete chat
-
-### Admin
-- `GET /api/admin/users` - List users
-- `POST /api/admin/documents/upload` - Upload study material
-- `GET /api/admin/analytics` - Get usage analytics
-
-## 🎓 Sample AI Prompts
-
-Students can ask:
-- "Explain photosynthesis for O/L"
-- "Solve this quadratic equation"
-- "What are the causes of World War I?"
-- "Give me a summary of electricity"
-- "Create 5 MCQs from acids and bases"
-
-## 📝 Environment Variables
-
-### Frontend (.env)
-```
-VITE_API_URL=http://localhost:8000/api
+```bash
+cd frontend
+npm run build
 ```
 
-### Backend (.env)
+Backend checks:
+
+```bash
+cd backend
+python -m compileall app main.py
+python test_auth.py
 ```
-MONGODB_URL=mongodb+srv://user:password@cluster.mongodb.net/olmate
-DATABASE_NAME=olmate
-SECRET_KEY=your-secret-key
-OPENAI_API_KEY=sk-your-openai-key
-CHROMA_DB_PATH=./chroma_data
+
+## Deployment Notes
+
+Frontend can be deployed to Vercel, Netlify, or any static host using
+`npm run build`.
+
+Backend can be deployed to Render, Railway, Fly.io, or another Python host.
+Use this start command from the `backend` directory:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
-## 🤝 Contributing
+For production:
+- Set a real `SECRET_KEY`.
+- Set `MONGODB_URL` to MongoDB Atlas or another reachable MongoDB instance.
+- Set `CORS_ORIGINS` to the real frontend domain.
+- Add `OPENAI_API_KEY` for live AI responses.
+- Keep `knowledge_base/` available to the backend process or set
+  `KNOWLEDGE_BASE_PATH` to the deployed content path.
 
-1. Create a feature branch (`git checkout -b feature/amazing-feature`)
-2. Commit changes (`git commit -m 'Add amazing feature'`)
-3. Push to branch (`git push origin feature/amazing-feature`)
-4. Open a Pull Request
+## License
 
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 👨‍💻 Author
-
-Created as a Final Year Project for Sri Lankan GCE Ordinary Level Education.
-
-## 🙏 Acknowledgments
-
-- Sri Lankan O/L Syllabus & Curriculum
-- OpenAI for GPT API
-- FastAPI & React communities
-
----
-
-**OL Mate** - Making O/L exam preparation smarter, faster, and more accessible! 📚✨
+MIT

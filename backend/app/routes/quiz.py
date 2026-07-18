@@ -5,6 +5,7 @@ from typing import Dict, List
 from bson.objectid import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.auth.jwt_handler import get_current_user_id
 from app.database.mongodb import get_database
 from app.models.quiz import QuizQuestion, QuizRequest, QuizResponse, QuizSubmission, QuizSubmissionResult
 from app.rag.rag_service import retrieve_relevant_context
@@ -130,9 +131,14 @@ GENERIC_QUESTIONS = [
 
 
 @router.post("/generate", response_model=QuizResponse)
-async def generate_quiz(request: QuizRequest, db=Depends(get_db)):
+async def generate_quiz(
+    request: QuizRequest,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
     if not request.user_id.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User ID is required")
+    _ensure_user_owns_resource(request.user_id, current_user_id)
     if not request.subject.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
 
@@ -153,7 +159,13 @@ async def generate_quiz(request: QuizRequest, db=Depends(get_db)):
 
 
 @router.post("/{quiz_id}/submit", response_model=QuizSubmissionResult)
-async def submit_quiz(quiz_id: str, submission: QuizSubmission, db=Depends(get_db)):
+async def submit_quiz(
+    quiz_id: str,
+    submission: QuizSubmission,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    _ensure_user_owns_resource(submission.user_id, current_user_id)
     if not ObjectId.is_valid(quiz_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid quiz ID")
 
@@ -190,7 +202,12 @@ async def submit_quiz(quiz_id: str, submission: QuizSubmission, db=Depends(get_d
 
 
 @router.get("/history/{user_id}", response_model=List[QuizResponse])
-async def get_quiz_history(user_id: str, db=Depends(get_db)):
+async def get_quiz_history(
+    user_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    _ensure_user_owns_resource(user_id, current_user_id)
     quizzes = list(db["quizzes"].find({"user_id": user_id}, sort=[("created_at", -1)]))
     return [
         QuizResponse(
@@ -266,3 +283,11 @@ def _questions_from_context(subject: str, topic: str, context: str) -> List[dict
             "explanation": sentence,
         })
     return questions
+
+
+def _ensure_user_owns_resource(resource_user_id: str, current_user_id: str):
+    if resource_user_id != current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only access your own quizzes",
+        )

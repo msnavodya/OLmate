@@ -1,7 +1,10 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 class Settings:
     # App settings
@@ -22,15 +25,19 @@ class Settings:
     
     # CORS
     CORS_ORIGINS: list = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://olmate.vercel.app",
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ORIGINS",
+            "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,https://olmate.vercel.app",
+        ).split(",")
+        if origin.strip()
     ]
     
     # ChromaDB
     CHROMA_DB_PATH: str = os.getenv("CHROMA_DB_PATH", "./chroma_data")
-    KNOWLEDGE_BASE_PATH: str = os.getenv("KNOWLEDGE_BASE_PATH", "../knowledge_base")
+    KNOWLEDGE_BASE_PATH: str = os.getenv(
+        "KNOWLEDGE_BASE_PATH",
+        str(PROJECT_ROOT / "knowledge_base"),
+    )
 
 settings = Settings()

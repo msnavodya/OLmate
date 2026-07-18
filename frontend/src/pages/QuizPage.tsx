@@ -54,7 +54,7 @@ export default function QuizPage() {
       setQuiz(generatedQuiz);
     } catch (generateError) {
       console.error('Failed to generate quiz:', generateError);
-      setError('Could not generate a quiz. Please try again.');
+      setError(getApiErrorMessage(generateError, 'Could not generate a quiz. Please try again.'));
     } finally {
       setIsGenerating(false);
     }
@@ -79,7 +79,7 @@ export default function QuizPage() {
       setResult(submittedResult);
     } catch (submitError) {
       console.error('Failed to submit quiz:', submitError);
-      setError('Could not submit your answers. Please try again.');
+      setError(getApiErrorMessage(submitError, 'Could not submit your answers. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -284,4 +284,23 @@ function getOptionClassName(isSelected: boolean, isCorrect: boolean, isWrong: bo
   }
 
   return `${baseClass} border-slate-200 bg-slate-50 text-slate-700 hover:border-cyan-200 hover:bg-cyan-50`;
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof error.response === 'object' &&
+    error.response !== null &&
+    'data' in error.response &&
+    typeof error.response.data === 'object' &&
+    error.response.data !== null &&
+    'detail' in error.response.data &&
+    typeof error.response.data.detail === 'string'
+  ) {
+    return error.response.data.detail;
+  }
+
+  return fallback;
 }

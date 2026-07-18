@@ -111,12 +111,13 @@ export default function ChatPage() {
       );
     } catch (error) {
       console.error('Failed to send message:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get response. Please try again.';
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === pendingId
             ? {
                 ...msg,
-                answer: 'Error: Failed to get response. Please try again.',
+                answer: `Error: ${errorMessage}`,
                 isLoading: false,
               }
             : msg
