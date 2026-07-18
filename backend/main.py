@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
+from app.database.mongodb import MongoDatabase
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -16,6 +17,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Database lifecycle events
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database connection on app startup"""
+    MongoDatabase.connect_db()
+    print(f"[OK] OL Mate API v{settings.APP_VERSION} started")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close database connection on app shutdown"""
+    MongoDatabase.close_db()
+    print("[OK] OL Mate API stopped")
 
 # Health check endpoint
 @app.get("/health")
