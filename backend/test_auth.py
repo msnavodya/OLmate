@@ -40,8 +40,6 @@ def test_mock_database():
     if not_found is None:
         print(f"  [OK] Non-existent user correctly returns None")
     
-    return True
-
 def test_auth_functions():
     """Test auth functions"""
     print("\n[TEST] Authentication Functions")
@@ -77,23 +75,24 @@ def test_auth_functions():
     if decoded == "test_user_id":
         print(f"  [OK] JWT token decoded correctly: {decoded}")
     
-    return True
-
-async def test_auth_endpoints():
+async def run_auth_endpoints():
     """Test auth endpoints using FastAPI TestClient"""
     print("\n[TEST] Auth Endpoints")
     
     try:
-        from httpx import AsyncClient
+        from httpx import ASGITransport, AsyncClient
         from main import app
         
-        async with AsyncClient(app=app, base_url="http://test") as ac:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
             # Test register
+            endpoint_email = "endpoint@example.com"
+
             register_response = await ac.post(
                 "/api/auth/register",
                 json={
-                    "name": "Test User",
-                    "email": "test@example.com",
+                    "name": "Endpoint User",
+                    "email": endpoint_email,
                     "password": "password123"
                 }
             )
@@ -108,7 +107,7 @@ async def test_auth_endpoints():
                 login_response = await ac.post(
                     "/api/auth/login",
                     json={
-                        "email": "test@example.com",
+                        "email": endpoint_email,
                         "password": "password123"
                     }
                 )
@@ -117,6 +116,24 @@ async def test_auth_endpoints():
                     login_data = login_response.json()
                     print(f"  [OK] Login successful")
                     print(f"  [OK] Token received: {login_data['access_token'][:20]}...")
+
+                    chat_response = await ac.post(
+                        "/api/chat/send",
+                        json={
+                            "user_id": register_data["user"]["id"],
+                            "question": "Explain photosynthesis",
+                            "subject": "Science"
+                        }
+                    )
+
+                    if chat_response.status_code == 200:
+                        chat_data = chat_response.json()
+                        if "placeholder response" in chat_data["answer"].lower():
+                            print("  [ERROR] Chat returned placeholder response")
+                        else:
+                            print("  [OK] Chat response generated successfully")
+                    else:
+                        print(f"  [ERROR] Chat failed: {chat_response.json()}")
                 else:
                     print(f"  [ERROR] Login failed: {login_response.json()}")
             else:
@@ -124,6 +141,10 @@ async def test_auth_endpoints():
                 
     except Exception as e:
         print(f"  [INFO] Skipping async endpoint tests: {str(e)}")
+
+def test_auth_endpoints():
+    """Pytest-compatible wrapper for async auth endpoint checks"""
+    asyncio.run(run_auth_endpoints())
 
 if __name__ == "__main__":
     print("=" * 60)
@@ -137,7 +158,7 @@ if __name__ == "__main__":
     
     # Run async tests
     try:
-        asyncio.run(test_auth_endpoints())
+        asyncio.run(run_auth_endpoints())
     except Exception as e:
         print(f"  [WARNING] Endpoint tests skipped: {type(e).__name__}")
     

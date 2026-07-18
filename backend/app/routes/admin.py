@@ -1,5 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from pathlib import Path
+from config import settings
 from app.database.mongodb import get_database
+from app.rag.rag_service import SUPPORTED_EXTENSIONS, process_pdf
 
 router = APIRouter()
 
@@ -24,13 +27,26 @@ async def get_users(db=Depends(get_db)):
 
 @router.post("/documents/upload")
 async def upload_document(file: UploadFile = File(...), db=Depends(get_db)):
-    """
-    Upload study materials (PDFs, notes) to knowledge base.
-    This will be fully implemented in Phase 3.
-    """
+    """Upload study materials to the local knowledge base."""
+    filename = Path(file.filename or "").name
+    suffix = Path(filename).suffix.lower()
+    if not filename or suffix not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .txt, .md, and .pdf knowledge files are supported",
+        )
+
+    knowledge_base_path = Path(settings.KNOWLEDGE_BASE_PATH).expanduser().resolve()
+    knowledge_base_path.mkdir(parents=True, exist_ok=True)
+    destination = knowledge_base_path / filename
+
+    destination.write_bytes(await file.read())
+    metadata = process_pdf(str(destination)) if suffix == ".pdf" else {"filename": filename}
+
     return {
-        "message": "Document upload endpoint - will be implemented in Phase 3",
-        "filename": file.filename
+        "message": "Document uploaded and ready for chat and quizzes",
+        "filename": filename,
+        "metadata": metadata,
     }
 
 @router.get("/analytics")

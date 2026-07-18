@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from bson.objectid import ObjectId
 from app.models.chat import ChatMessage, ChatResponse
 from app.database.mongodb import get_database
 from app.auth.jwt_handler import decode_access_token
+from app.chatbot.openai_service import get_ai_response, stream_ai_response
+from app.rag.rag_service import retrieve_relevant_context
 import datetime
+import json
 
 router = APIRouter()
 
@@ -21,27 +25,94 @@ def get_current_user(token: str):
 
 @router.post("/send", response_model=ChatResponse)
 async def send_chat(message: ChatMessage, db=Depends(get_db)):
+    _validate_chat_message(message)
+
     chats_collection = db["chats"]
-    
+    created_at = datetime.datetime.utcnow()
+    context = retrieve_relevant_context(message.question, message.subject)
+    answer = get_ai_response(message.question, message.subject, context)
+
     # Create chat document
     chat_doc = {
         "user_id": message.user_id,
         "question": message.question,
-        "answer": "This is a placeholder response. Integration with OpenAI will be done in Phase 2.",
+        "answer": answer,
         "subject": message.subject,
-        "created_at": datetime.datetime.utcnow()
+        "created_at": created_at
     }
-    
+
     result = chats_collection.insert_one(chat_doc)
-    
+
     return ChatResponse(
         id=str(result.inserted_id),
         user_id=message.user_id,
         question=message.question,
-        answer=chat_doc["answer"],
+        answer=answer,
         subject=message.subject,
-        created_at=chat_doc["created_at"]
+        created_at=created_at
     )
+
+
+@router.post("/stream")
+async def stream_chat(message: ChatMessage, db=Depends(get_db)):
+    _validate_chat_message(message)
+
+    def event_stream():
+        answer_parts = []
+        created_at = datetime.datetime.utcnow()
+
+        try:
+            context = retrieve_relevant_context(message.question, message.subject)
+            for chunk in stream_ai_response(message.question, message.subject, context):
+                answer_parts.append(chunk)
+                yield _json_line({"type": "chunk", "chunk": chunk})
+
+            answer = "".join(answer_parts)
+            chat_doc = {
+                "user_id": message.user_id,
+                "question": message.question,
+                "answer": answer,
+                "subject": message.subject,
+                "created_at": created_at
+            }
+            result = db["chats"].insert_one(chat_doc)
+            yield _json_line({
+                "type": "done",
+                "message": {
+                    "id": str(result.inserted_id),
+                    "user_id": message.user_id,
+                    "question": message.question,
+                    "answer": answer,
+                    "subject": message.subject,
+                    "created_at": created_at.isoformat(),
+                },
+            })
+        except Exception as exc:
+            yield _json_line({"type": "error", "error": str(exc)})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _validate_chat_message(message: ChatMessage):
+    if not message.user_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User ID is required"
+        )
+
+    if not message.question.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Question is required"
+        )
+
+
+def _json_line(payload: dict) -> str:
+    return json.dumps(payload, default=str) + "\n"
 
 @router.get("/history/{user_id}")
 async def get_chat_history(user_id: str, db=Depends(get_db)):

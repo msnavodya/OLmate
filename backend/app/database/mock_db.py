@@ -35,15 +35,31 @@ class MockCollection:
                 return doc
         return None
     
-    def find(self, query: Dict[str, Any] = None) -> List[Dict]:
+    def find(
+        self,
+        query: Optional[Dict[str, Any]] = None,
+        projection: Optional[Dict[str, Any]] = None,
+        sort: Optional[List[tuple]] = None,
+    ) -> List[Dict]:
         """Find all documents matching the query"""
         if query is None:
-            return self.data
+            result = list(self.data)
+        else:
+            result = []
+            for doc in self.data:
+                if self._matches_query(doc, query):
+                    result.append(doc)
+
+        if sort:
+            for field, direction in reversed(sort):
+                result.sort(
+                    key=lambda doc: doc.get(field),
+                    reverse=direction == -1,
+                )
+
+        if projection:
+            result = [self._apply_projection(doc, projection) for doc in result]
         
-        result = []
-        for doc in self.data:
-            if self._matches_query(doc, query):
-                result.append(doc)
         return result
     
     def insert_one(self, document: Dict) -> 'MockInsertResult':
@@ -71,6 +87,20 @@ class MockCollection:
                     doc.update(update)
                 return MockUpdateResult(modified_count=1)
         return MockUpdateResult(modified_count=0)
+
+    def count_documents(self, query: Dict[str, Any]) -> int:
+        """Count documents matching the query"""
+        return len(self.find(query))
+
+    def _apply_projection(self, doc: Dict, projection: Dict[str, Any]) -> Dict:
+        """Apply simple MongoDB-style include/exclude projection"""
+        projected = dict(doc)
+        excluded_fields = [key for key, value in projection.items() if value == 0]
+
+        for field in excluded_fields:
+            projected.pop(field, None)
+
+        return projected
     
     def _matches_query(self, doc: Dict, query: Dict) -> bool:
         """Check if document matches query"""

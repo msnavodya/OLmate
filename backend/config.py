@@ -23,11 +23,14 @@ class Settings:
     # CORS
     CORS_ORIGINS: list = [
         "http://localhost:5173",
+        "http://127.0.0.1:5173",
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "https://olmate.vercel.app",
     ]
     
     # ChromaDB
     CHROMA_DB_PATH: str = os.getenv("CHROMA_DB_PATH", "./chroma_data")
+    KNOWLEDGE_BASE_PATH: str = os.getenv("KNOWLEDGE_BASE_PATH", "../knowledge_base")
 
 settings = Settings()
