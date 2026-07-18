@@ -19,6 +19,9 @@ Rules:
 - Answer according to the Sri Lankan O/L syllabus.
 - Use simple language suitable for students aged 15-17.
 - Give step-by-step solutions for mathematics.
+- For mathematics, format answers like ChatGPT: brief intro, display LaTeX equations,
+  clear step headings, a boxed final answer, and an alternative method when useful.
+- Use $$...$$ for display math and \\(...\\) for inline math.
 - Keep answers concise but clear.
 - If unsure, say you are not certain.
 - Do not provide unrelated information.
@@ -170,6 +173,11 @@ def _get_local_tutor_response(question: str, subject: str, context: str = "") ->
     focus = SUBJECT_FOCUS.get(subject, "explain the idea with simple steps and an exam-friendly example")
     context_points = _extract_context_points(context)
 
+    if subject == "Mathematics":
+        worked_math_response = _try_worked_math_solution(question)
+        if worked_math_response:
+            return worked_math_response
+
     topic_response = _match_topic(lower_question)
     if topic_response:
         summary, points, example = topic_response
@@ -264,6 +272,188 @@ def _extract_arithmetic_expression(text: str) -> str | None:
     if not any(operator in expression for operator in ("+", "-", "*", "/")):
         return None
     return expression
+
+
+def _try_worked_math_solution(question: str) -> str | None:
+    quadratic = _parse_quadratic_equation(question)
+    if quadratic:
+        return _format_quadratic_solution(*quadratic)
+
+    return None
+
+
+def _parse_quadratic_equation(question: str) -> tuple[str, int, int, int] | None:
+    normalized = (
+        question.lower()
+        .replace("−", "-")
+        .replace("²", "^2")
+        .replace("**", "^")
+    )
+    match = re.search(r"[-+x^0-9\s]+=[-+x^0-9\s]+", normalized)
+    if not match:
+        return None
+
+    equation = match.group(0).strip()
+    left, right = equation.split("=", 1)
+    left_coeffs = _parse_polynomial(left)
+    right_coeffs = _parse_polynomial(right)
+    if left_coeffs is None or right_coeffs is None:
+        return None
+
+    a = left_coeffs[0] - right_coeffs[0]
+    b = left_coeffs[1] - right_coeffs[1]
+    c = left_coeffs[2] - right_coeffs[2]
+    if a == 0:
+        return None
+
+    canonical = _format_equation(a, b, c)
+    return canonical, a, b, c
+
+
+def _parse_polynomial(expression: str) -> tuple[int, int, int] | None:
+    compact = expression.replace(" ", "")
+    if not compact or not re.fullmatch(r"[-+x^0-9]+", compact):
+        return None
+
+    if compact[0] not in "+-":
+        compact = f"+{compact}"
+
+    a = b = c = 0
+    for term in re.findall(r"[+-][^+-]+", compact):
+        sign = -1 if term[0] == "-" else 1
+        body = term[1:]
+
+        if "x^2" in body:
+            coefficient = body.replace("x^2", "")
+            a += sign * _parse_coefficient(coefficient)
+        elif "x" in body:
+            coefficient = body.replace("x", "")
+            b += sign * _parse_coefficient(coefficient)
+        elif body.isdigit():
+            c += sign * int(body)
+        else:
+            return None
+
+    return a, b, c
+
+
+def _parse_coefficient(value: str) -> int:
+    if value == "":
+        return 1
+    return int(value)
+
+
+def _format_quadratic_solution(equation: str, a: int, b: int, c: int) -> str:
+    if a == 1 and b == 0 and c < 0:
+        root_square = -c / a
+        if root_square > 0 and root_square.is_integer():
+            root_value = int(root_square ** 0.5)
+            if root_value * root_value == int(root_square):
+                return _format_difference_of_squares_solution(equation, root_value)
+
+    roots = _integer_quadratic_roots(a, b, c)
+    if a == 1 and roots:
+        first, second = roots
+        factors = _factor_pair_for_roots(first, second)
+        return (
+            f"To solve:\n\n"
+            f"$$\n{equation}\n$$\n\n"
+            f"### Step 1: Factor the quadratic\n\n"
+            f"$$\n{equation.replace(' = 0', '')} = {factors}\n$$\n\n"
+            f"### Step 2: Set each factor equal to zero\n\n"
+            f"- \\(x {'-' if first >= 0 else '+'} {abs(first)} = 0 \\Rightarrow x = {first}\\)\n"
+            f"- \\(x {'-' if second >= 0 else '+'} {abs(second)} = 0 \\Rightarrow x = {second}\\)\n\n"
+            f"### Final Answer\n\n"
+            f"$$\n\\boxed{{x = {first} \\text{{ or }} x = {second}}}\n$$"
+        )
+
+    return _format_quadratic_formula_solution(equation, a, b, c)
+
+
+def _format_difference_of_squares_solution(equation: str, root_value: int) -> str:
+    return (
+        f"To solve:\n\n"
+        f"$$\n{equation}\n$$\n\n"
+        f"### Step 1: Move the constant to the other side\n\n"
+        f"$$\nx^2 = {root_value ** 2}\n$$\n\n"
+        f"### Step 2: Take the square root of both sides\n\n"
+        f"$$\nx = \\pm \\sqrt{{{root_value ** 2}}}\n$$\n\n"
+        f"$$\nx = \\pm {root_value}\n$$\n\n"
+        f"### Final Answer\n\n"
+        f"$$\n\\boxed{{x = {root_value} \\text{{ or }} x = -{root_value}}}\n$$\n\n"
+        f"### Alternative Method: Factorization\n\n"
+        f"$$\n{equation}\n$$\n\n"
+        f"This is a **difference of squares**:\n\n"
+        f"$$\n(x + {root_value})(x - {root_value}) = 0\n$$\n\n"
+        f"Set each factor equal to zero:\n\n"
+        f"- \\(x + {root_value} = 0 \\Rightarrow x = -{root_value}\\)\n"
+        f"- \\(x - {root_value} = 0 \\Rightarrow x = {root_value}\\)\n\n"
+        f"**Answer:**\n\n"
+        f"$$\n\\boxed{{x = -{root_value},\\; {root_value}}}\n$$"
+    )
+
+
+def _format_quadratic_formula_solution(equation: str, a: int, b: int, c: int) -> str:
+    discriminant = b * b - 4 * a * c
+    return (
+        f"To solve:\n\n"
+        f"$$\n{equation}\n$$\n\n"
+        f"### Step 1: Identify \\(a\\), \\(b\\), and \\(c\\)\n\n"
+        f"$$\na = {a},\\quad b = {b},\\quad c = {c}\n$$\n\n"
+        f"### Step 2: Use the quadratic formula\n\n"
+        f"$$\nx = \\frac{{-b \\pm \\sqrt{{b^2 - 4ac}}}}{{2a}}\n$$\n\n"
+        f"### Step 3: Substitute the values\n\n"
+        f"$$\nx = \\frac{{-{b} \\pm \\sqrt{{{b}^2 - 4({a})({c})}}}}{{2({a})}}\n$$\n\n"
+        f"$$\nx = \\frac{{{-b} \\pm \\sqrt{{{discriminant}}}}}{{{2 * a}}}\n$$\n\n"
+        f"### Final Answer\n\n"
+        f"$$\n\\boxed{{x = \\frac{{{-b} \\pm \\sqrt{{{discriminant}}}}}{{{2 * a}}}}}\n$$"
+    )
+
+
+def _integer_quadratic_roots(a: int, b: int, c: int) -> tuple[int, int] | None:
+    discriminant = b * b - 4 * a * c
+    if discriminant < 0:
+        return None
+
+    sqrt_discriminant = int(discriminant ** 0.5)
+    if sqrt_discriminant * sqrt_discriminant != discriminant:
+        return None
+
+    denominator = 2 * a
+    first_numerator = -b + sqrt_discriminant
+    second_numerator = -b - sqrt_discriminant
+    if first_numerator % denominator != 0 or second_numerator % denominator != 0:
+        return None
+
+    first = first_numerator // denominator
+    second = second_numerator // denominator
+    return first, second
+
+
+def _factor_pair_for_roots(first: int, second: int) -> str:
+    first_sign = "-" if first >= 0 else "+"
+    second_sign = "-" if second >= 0 else "+"
+    return f"(x {first_sign} {abs(first)})(x {second_sign} {abs(second)})"
+
+
+def _format_equation(a: int, b: int, c: int) -> str:
+    terms = [_format_polynomial_term(a, "x^2", is_first=True)]
+    if b:
+        terms.append(_format_polynomial_term(b, "x"))
+    if c:
+        terms.append(_format_polynomial_term(c, ""))
+    return f"{''.join(terms)} = 0"
+
+
+def _format_polynomial_term(coefficient: int, variable: str, is_first: bool = False) -> str:
+    sign = "-" if coefficient < 0 else "+"
+    abs_coefficient = abs(coefficient)
+    value = variable if abs_coefficient == 1 and variable else f"{abs_coefficient}{variable}"
+
+    if is_first:
+        return f"-{value}" if coefficient < 0 else value
+
+    return f" {sign} {value}"
 
 
 def _chunk_text(text: str) -> Iterable[str]:

@@ -5,6 +5,9 @@ import { chatService, ChatResponse } from '../services/chatService';
 import { OL_SUBJECTS } from '../utils/constants';
 import { ArrowLeft, Bot, Copy, Loader, Send, Sparkles, Trash2, UserCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 interface Message {
   id?: string;
@@ -248,7 +251,9 @@ export default function ChatPage() {
                         ) : (
                           <>
                             <div className="prose prose-sm max-w-none prose-slate">
-                              <ReactMarkdown>{message.answer}</ReactMarkdown>
+                              <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+                                {message.answer}
+                              </ReactMarkdown>
                             </div>
                             <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-400">
                               <span className="inline-flex items-center gap-2">
