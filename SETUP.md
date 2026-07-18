@@ -401,7 +401,12 @@ pip install email-validator
 
 **Issue**: Port 8000 already in use
 ```bash
-# Solution: Change port in uvicorn.run() or kill process
+# Development startup automatically tries the next free port.
+python main.py
+
+# Or force a specific port in PowerShell:
+$env:PORT=8001
+python main.py
 ```
 
 ---

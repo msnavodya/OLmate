@@ -75,6 +75,15 @@ Backend:
 API docs:
 `http://localhost:8000/docs`
 
+If port `8000` is already busy during local development, `python main.py` and
+`python run_dev.py` automatically use the next free port. To force a specific
+port in PowerShell:
+
+```powershell
+$env:PORT=8001
+python main.py
+```
+
 ### Frontend
 
 ```bash

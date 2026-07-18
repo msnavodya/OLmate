@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import os
 from config import settings
 from app.database.mongodb import MongoDatabase
+from app.server import parse_port, select_available_port
 
 
 @asynccontextmanager
@@ -46,4 +48,17 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    host = os.getenv("HOST", "0.0.0.0")
+    requested_port = parse_port(os.getenv("PORT"))
+    port = requested_port
+
+    if "PORT" not in os.environ:
+        port = select_available_port(host, requested_port)
+        if port != requested_port:
+            print(
+                f"[WARNING] Port {requested_port} is already in use; "
+                f"starting OL Mate API on port {port} instead"
+            )
+
+    uvicorn.run(app, host=host, port=port)
