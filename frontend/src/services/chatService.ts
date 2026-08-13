@@ -62,19 +62,22 @@ export const chatService = {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let done = false;
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
+    while (!done) {
+      const { value, done: readerDone } = await reader.read();
+      done = !!readerDone;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        onEvent(JSON.parse(trimmed) as ChatStreamEvent);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          onEvent(JSON.parse(trimmed) as ChatStreamEvent);
+        }
       }
     }
 

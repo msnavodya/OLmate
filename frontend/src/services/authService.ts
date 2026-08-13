@@ -30,6 +30,8 @@ interface ProfileUpdate {
   email?: string;
 }
 
+const REMEMBERED_EMAIL_KEY = 'remembered_login_email';
+
 export const authService = {
   async register(data: RegisterData): Promise<AuthResponse> {
     const response = await apiClient.post('/auth/register', {
@@ -97,5 +99,17 @@ export const authService = {
 
   setStoredUser(user: AuthUser): void {
     localStorage.setItem('user', JSON.stringify(user));
+  },
+
+  getRememberedEmail(): string {
+    return localStorage.getItem(REMEMBERED_EMAIL_KEY) || '';
+  },
+
+  setRememberedEmail(email: string): void {
+    localStorage.setItem(REMEMBERED_EMAIL_KEY, email.trim().toLowerCase());
+  },
+
+  clearRememberedEmail(): void {
+    localStorage.removeItem(REMEMBERED_EMAIL_KEY);
   },
 };

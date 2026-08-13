@@ -17,7 +17,8 @@ SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf"}
 STOPWORDS = {
     "about", "after", "also", "and", "are", "ask", "can", "for", "from", "give",
     "has", "how", "into", "is", "it", "main", "of", "ol", "on", "or", "question",
-    "show", "the", "this", "to", "use", "what", "when", "where", "why", "with",
+    "show", "solve", "the", "this", "to", "use", "what", "when", "where", "why",
+    "with",
 }
 
 DEFAULT_SUBJECT_NOTES = {
@@ -109,7 +110,7 @@ def retrieve_relevant_context(query: str, subject: str = "", top_k: int = 5) -> 
 
     chunks = _load_knowledge_chunks()
     scored_chunks = []
-    query_terms = _tokenize(f"{subject} {clean_query}")
+    query_terms = _tokenize(clean_query)
 
     for chunk in chunks:
         score = _score_chunk(chunk, query_terms, subject)
@@ -218,8 +219,10 @@ def _split_text(text: str, chunk_size: int = 850) -> Iterable[str]:
 
 
 def _score_chunk(chunk: KnowledgeChunk, query_terms: set[str], subject: str) -> int:
-    chunk_terms = _tokenize(f"{chunk.subject} {chunk.text}")
+    chunk_terms = _tokenize(chunk.text)
     score = len(query_terms.intersection(chunk_terms))
+    if score == 0:
+        return 0
     if subject and chunk.subject.lower() == subject.lower():
         score += 3
     return score

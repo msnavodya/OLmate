@@ -140,6 +140,20 @@ async def get_chat_history(
         for chat in chats
     ]
 
+@router.delete("/history/user/{user_id}")
+async def clear_chat_history(
+    user_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db=Depends(get_db),
+):
+    _ensure_user_owns_resource(user_id, current_user_id)
+
+    result = db["chats"].delete_many({"user_id": user_id})
+    return {
+        "message": "Chat history cleared successfully",
+        "deleted_count": result.deleted_count,
+    }
+
 @router.delete("/history/{chat_id}")
 async def delete_chat(
     chat_id: str,

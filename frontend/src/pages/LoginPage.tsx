@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/useAuth';
-import { ArrowRight, BookOpenCheck, Loader, Lock, Mail, Sparkles } from 'lucide-react';
+import { authService } from '../services/authService';
+import { ArrowRight, BookOpenCheck, Check, Loader, Lock, Mail, Sparkles } from 'lucide-react';
 
 const highlights = ['Syllabus-aware answers', 'Saved chat history', 'Built for O/L revision'];
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const rememberedEmail = authService.getRememberedEmail();
+  const [email, setEmail] = useState(rememberedEmail);
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(Boolean(rememberedEmail));
   const [error, setError] = useState('');
   const { login, isLoading } = useAuth();
   const navigate = useNavigate();
@@ -17,6 +20,11 @@ export default function LoginPage() {
     setError('');
     try {
       await login(email, password);
+      if (rememberMe) {
+        authService.setRememberedEmail(email);
+      } else {
+        authService.clearRememberedEmail();
+      }
       navigate('/dashboard');
     } catch (err) {
       setError('Invalid email or password');
@@ -75,10 +83,12 @@ export default function LoginPage() {
                   <Mail size={18} className="text-slate-400" />
                   <input
                     type="email"
+                    name="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full bg-transparent px-3 py-3 text-slate-900 placeholder:text-slate-400"
                     placeholder="you@example.com"
+                    autoComplete="username"
                     required
                   />
                 </div>
@@ -90,14 +100,32 @@ export default function LoginPage() {
                   <Lock size={18} className="text-slate-400" />
                   <input
                     type="password"
+                    name="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full bg-transparent px-3 py-3 text-slate-900 placeholder:text-slate-400"
                     placeholder="Enter your password"
+                    autoComplete="current-password"
                     required
                   />
                 </div>
               </div>
+
+              <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                <span className="font-semibold">Remember my email</span>
+                <span className="relative inline-flex h-6 w-11 flex-shrink-0 items-center">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <span className="absolute inset-0 rounded-full bg-slate-300 transition peer-checked:bg-cyan-600" />
+                  <span className="relative ml-1 flex h-4 w-4 items-center justify-center rounded-full bg-white text-cyan-600 transition peer-checked:translate-x-5">
+                    {rememberMe && <Check size={11} strokeWidth={3} />}
+                  </span>
+                </span>
+              </label>
 
               <button
                 type="submit"

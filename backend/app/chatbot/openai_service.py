@@ -18,11 +18,14 @@ You are OL Mate, an AI tutor for Sri Lankan GCE Ordinary Level students.
 Rules:
 - Answer according to the Sri Lankan O/L syllabus.
 - Use simple language suitable for students aged 15-17.
-- Give step-by-step solutions for mathematics.
+- Answer the student's exact question first. Do not start with generic revision notes.
+- Use the supplied context only when it clearly matches the question. Ignore unrelated context.
+- Give step-by-step solutions for mathematics and calculations.
 - For mathematics, format answers like ChatGPT: brief intro, display LaTeX equations,
-  clear step headings, a boxed final answer, and an alternative method when useful.
+  clear step headings, a boxed final answer, and a check or alternative method when useful.
 - Use $$...$$ for display math and \\(...\\) for inline math.
-- Keep answers concise but clear.
+- For theory subjects, use short sections: Direct answer, Explanation, Exam point.
+- Keep answers concise but clear. Avoid long memorized lists unless the question asks for them.
 - If unsure, say you are not certain.
 - Do not provide unrelated information.
 '''
@@ -79,6 +82,10 @@ def get_ai_response(question: str, subject: str, context: str = "") -> str:
     clean_question = " ".join(question.split())
     clean_subject = subject.strip() or "General"
 
+    local_math_response = _try_local_math_first(clean_question, clean_subject)
+    if local_math_response:
+        return local_math_response
+
     if _has_real_openai_key():
         response = _get_openai_response(clean_question, clean_subject, context)
         if response:
@@ -91,6 +98,11 @@ def stream_ai_response(question: str, subject: str, context: str = "") -> Iterab
     """Yield tutor answer chunks for a ChatGPT-like typing experience."""
     clean_question = " ".join(question.split())
     clean_subject = subject.strip() or "General"
+
+    local_math_response = _try_local_math_first(clean_question, clean_subject)
+    if local_math_response:
+        yield from _chunk_text(local_math_response)
+        return
 
     if _has_real_openai_key():
         try:
@@ -106,6 +118,14 @@ def stream_ai_response(question: str, subject: str, context: str = "") -> Iterab
     yield from _chunk_text(_get_local_tutor_response(clean_question, clean_subject, context))
 
 
+def _try_local_math_first(question: str, subject: str) -> str | None:
+    """Prefer deterministic working for equations the local solver understands."""
+    if subject != "Mathematics":
+        return None
+
+    return _try_worked_math_solution(question)
+
+
 def _has_real_openai_key() -> bool:
     key = settings.OPENAI_API_KEY.strip()
     return bool(key and not key.startswith("sk-your") and "your-openai" not in key)
@@ -118,14 +138,7 @@ def _get_openai_response(question: str, subject: str, context: str) -> str | Non
         client = OpenAI(api_key=settings.OPENAI_API_KEY)
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"Subject: {subject}\n"
-                    f"Context: {context or 'No extra context'}\n"
-                    f"Question: {question}"
-                ),
-            },
+            {"role": "user", "content": _build_user_prompt(question, subject, context)},
         ]
         completion = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -145,14 +158,7 @@ def _stream_openai_response(question: str, subject: str, context: str) -> Iterab
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": (
-                f"Subject: {subject}\n"
-                f"Context: {context or 'No extra context'}\n"
-                f"Question: {question}"
-            ),
-        },
+        {"role": "user", "content": _build_user_prompt(question, subject, context)},
     ]
     completion = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -168,10 +174,24 @@ def _stream_openai_response(question: str, subject: str, context: str) -> Iterab
             yield token
 
 
+def _build_user_prompt(question: str, subject: str, context: str) -> str:
+    return (
+        f"Subject: {subject}\n"
+        f"Student question: {question}\n\n"
+        "Relevant syllabus context, if useful:\n"
+        f"{context or 'No extra context'}\n\n"
+        "Answer instructions:\n"
+        "- Solve or answer this exact question.\n"
+        "- If the context is unrelated, ignore it completely.\n"
+        "- Do not mention percentages, ratios, or other topics unless the question asks for them.\n"
+        "- For math, show clean working and finish with a boxed final answer."
+    )
+
+
 def _get_local_tutor_response(question: str, subject: str, context: str = "") -> str:
     lower_question = question.lower()
     focus = SUBJECT_FOCUS.get(subject, "explain the idea with simple steps and an exam-friendly example")
-    context_points = _extract_context_points(context)
+    context_points = _extract_context_points(context, question)
 
     if subject == "Mathematics":
         worked_math_response = _try_worked_math_solution(question)
@@ -186,18 +206,13 @@ def _get_local_tutor_response(question: str, subject: str, context: str = "") ->
 
     math_response = _try_simple_math(lower_question)
     if subject == "Mathematics" and math_response:
-        summary, points, example = math_response
-        points = [*context_points[:2], *points] if context_points else points
-        return _format_response(subject, question, summary, points, example, focus)
+        expression, value = math_response
+        return _format_arithmetic_solution(expression, value)
 
     if context_points:
-        summary = (
-            f"For O/L {subject}, the useful knowledge for this question is: {context_points[0]}"
-        )
-        points = [
-            *context_points[:4],
-            "Connect these points directly to the wording of the question.",
-        ]
+        summary = _make_direct_context_summary(subject, question, context_points[0])
+        points = _unique_points(context_points[:4])
+        example = _context_exam_tip(subject)
     else:
         summary = (
             f"For O/L {subject}, this question is asking you to explain the main idea clearly, "
@@ -209,28 +224,118 @@ def _get_local_tutor_response(question: str, subject: str, context: str = "") ->
             f"Add one example, reason, or step so the answer is not just memorized wording.",
             "Finish with a check sentence that links back to the question.",
         ]
-    example = (
-        "Revision pattern: Definition -> 2 or 3 key points -> example -> final link to the question."
-    )
+        example = (
+            "Revision pattern: Definition -> 2 or 3 key points -> example -> final link to the question."
+        )
     return _format_response(subject, question, summary, points, example, focus)
 
 
-def _extract_context_points(context: str) -> list[str]:
+def _extract_context_points(context: str, question: str = "") -> list[str]:
     if not context:
         return []
 
-    points = []
+    question_terms = _tokenize_for_matching(question)
+    definition_term = _extract_definition_term(question)
+    scored_points = []
+    fallback_points = []
+
     for line in context.splitlines():
-        clean_line = line.strip()
+        clean_line = _clean_context_line(line)
         if not clean_line or clean_line.startswith(("Source:", "Subject:")):
             continue
         for sentence in re.split(r"(?<=[.!?])\s+", clean_line):
-            clean_sentence = sentence.strip(" -")
-            if len(clean_sentence) >= 35:
-                points.append(clean_sentence)
-            if len(points) >= 4:
-                return points
-    return points
+            clean_sentence = _clean_context_sentence(sentence)
+            if len(clean_sentence) < 20 or "answers should" in clean_sentence.lower():
+                continue
+
+            score = len(question_terms.intersection(_tokenize_for_matching(clean_sentence)))
+            if definition_term and _sentence_defines_term(clean_sentence, definition_term):
+                score += 4
+            if score > 0:
+                scored_points.append((score, clean_sentence))
+            elif len(fallback_points) < 4:
+                fallback_points.append(clean_sentence)
+
+    scored_points.sort(key=lambda item: item[0], reverse=True)
+    points = [point for _, point in scored_points[:4]]
+    if len(points) < 2:
+        points.extend(fallback_points[: 4 - len(points)])
+    return points[:4]
+
+
+def _clean_context_line(line: str) -> str:
+    clean_line = line.strip()
+    clean_line = re.sub(r"#+\s*", "", clean_line)
+    clean_line = re.sub(r"\b[A-Za-z ]+ Knowledge Base\b", "", clean_line)
+    clean_line = re.sub(r"\bExam Answer Pattern\b", "", clean_line)
+    return re.sub(r"\s+", " ", clean_line).strip()
+
+
+def _clean_context_sentence(sentence: str) -> str:
+    clean_sentence = sentence.strip(" -")
+    clean_sentence = re.sub(r"^#+\s*", "", clean_sentence)
+    clean_sentence = re.sub(r"^(Biology|Chemistry|Physics|Computer System|Business Basics)\b\s*", "", clean_sentence)
+    return re.sub(r"\s+", " ", clean_sentence).strip()
+
+
+def _tokenize_for_matching(text: str) -> set[str]:
+    stopwords = {
+        "about", "answer", "are", "can", "define", "explain", "for", "give",
+        "how", "is", "main", "meaning", "of", "ol", "question", "the", "this",
+        "to", "use", "what", "when", "where", "why", "with",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-zA-Z0-9]+", text.lower())
+        if len(token) > 2 and token not in stopwords
+    }
+
+
+def _make_direct_context_summary(subject: str, question: str, best_point: str) -> str:
+    if re.search(r"\b(what is|define|meaning of)\b", question.lower()):
+        return best_point
+    return f"For O/L {subject}, the key point is: {best_point}"
+
+
+def _unique_points(points: list[str]) -> list[str]:
+    unique = []
+    seen = set()
+    for point in points:
+        key = point.lower()
+        if key in seen:
+            continue
+        unique.append(point)
+        seen.add(key)
+    return unique
+
+
+def _context_exam_tip(subject: str) -> str:
+    if subject == "Mathematics":
+        return "Show each calculation step clearly and box the final answer."
+    if subject == "ICT":
+        return "Write the definition first, then add its function and one practical example."
+    if subject == "Science":
+        return "State the idea, then add a process, equation, observation, or example."
+    if subject == "Commerce":
+        return "Give the meaning, purpose, and a real business example when possible."
+    return "Start with the direct answer, then add two clear supporting points."
+
+
+def _extract_definition_term(question: str) -> str:
+    match = re.search(r"\b(?:what is|define|meaning of)\s+(?:a|an|the)?\s*([a-zA-Z0-9 ]+?)\??$", question.lower())
+    if not match:
+        return ""
+    term = match.group(1).strip()
+    return re.sub(r"\s+", " ", term)
+
+
+def _sentence_defines_term(sentence: str, term: str) -> bool:
+    lower_sentence = sentence.lower()
+    escaped_term = re.escape(term)
+    return bool(
+        re.search(rf"\b{escaped_term}\b\s+(?:is|are|means|refers to)\b", lower_sentence)
+        or re.search(rf"\bthe\s+{escaped_term}\b", lower_sentence)
+    )
 
 
 def _match_topic(lower_question: str) -> tuple[str, list[str], str] | None:
@@ -240,7 +345,7 @@ def _match_topic(lower_question: str) -> tuple[str, list[str], str] | None:
     return None
 
 
-def _try_simple_math(lower_question: str) -> tuple[str, list[str], str] | None:
+def _try_simple_math(lower_question: str) -> tuple[str, int | float] | None:
     expression = _extract_arithmetic_expression(lower_question)
     if not expression:
         return None
@@ -250,15 +355,7 @@ def _try_simple_math(lower_question: str) -> tuple[str, list[str], str] | None:
     except Exception:
         return None
 
-    return (
-        f"The value of {expression} is {value}.",
-        [
-            "Apply brackets first if there are any.",
-            "Then complete multiplication and division from left to right.",
-            "Finally complete addition and subtraction from left to right.",
-        ],
-        f"So, {expression} = {value}.",
-    )
+    return expression, value
 
 
 def _extract_arithmetic_expression(text: str) -> str | None:
@@ -279,16 +376,15 @@ def _try_worked_math_solution(question: str) -> str | None:
     if quadratic:
         return _format_quadratic_solution(*quadratic)
 
+    linear = _parse_linear_equation(question)
+    if linear:
+        return _format_linear_solution(*linear)
+
     return None
 
 
 def _parse_quadratic_equation(question: str) -> tuple[str, int, int, int] | None:
-    normalized = (
-        question.lower()
-        .replace("−", "-")
-        .replace("²", "^2")
-        .replace("**", "^")
-    )
+    normalized = _normalize_math_question(question)
     match = re.search(r"[-+x^0-9\s]+=[-+x^0-9\s]+", normalized)
     if not match:
         return None
@@ -308,6 +404,39 @@ def _parse_quadratic_equation(question: str) -> tuple[str, int, int, int] | None
 
     canonical = _format_equation(a, b, c)
     return canonical, a, b, c
+
+
+def _parse_linear_equation(question: str) -> tuple[str, int, int] | None:
+    normalized = _normalize_math_question(question)
+    match = re.search(r"[-+x^0-9\s]+=[-+x^0-9\s]+", normalized)
+    if not match:
+        return None
+
+    equation = match.group(0).strip()
+    left, right = equation.split("=", 1)
+    left_coeffs = _parse_polynomial(left)
+    right_coeffs = _parse_polynomial(right)
+    if left_coeffs is None or right_coeffs is None:
+        return None
+
+    a = left_coeffs[0] - right_coeffs[0]
+    b = left_coeffs[1] - right_coeffs[1]
+    c = left_coeffs[2] - right_coeffs[2]
+    if a != 0 or b == 0:
+        return None
+
+    canonical = _format_linear_equation(b, c)
+    return canonical, b, c
+
+
+def _normalize_math_question(question: str) -> str:
+    normalized = (
+        question.lower()
+        .replace("−", "-")
+        .replace("²", "^2")
+        .replace("**", "^")
+    )
+    return re.sub(r"\bx\s+2\b", "x^2", normalized)
 
 
 def _parse_polynomial(expression: str) -> tuple[int, int, int] | None:
@@ -393,6 +522,24 @@ def _format_difference_of_squares_solution(equation: str, root_value: int) -> st
     )
 
 
+def _format_linear_solution(equation: str, b: int, c: int) -> str:
+    moved_constant = -c
+    answer = moved_constant / b
+    answer_text = _format_number(answer)
+
+    return (
+        f"To solve:\n\n"
+        f"$$\n{equation}\n$$\n\n"
+        f"### Step 1: Move the constant term\n\n"
+        f"$$\n{_format_polynomial_term(b, 'x', is_first=True)} = {moved_constant}\n$$\n\n"
+        f"### Step 2: Divide by the coefficient of \\(x\\)\n\n"
+        f"$$\nx = \\frac{{{moved_constant}}}{{{b}}}\n$$\n\n"
+        f"$$\nx = {answer_text}\n$$\n\n"
+        f"### Final Answer\n\n"
+        f"$$\n\\boxed{{x = {answer_text}}}\n$$"
+    )
+
+
 def _format_quadratic_formula_solution(equation: str, a: int, b: int, c: int) -> str:
     discriminant = b * b - 4 * a * c
     return (
@@ -407,6 +554,21 @@ def _format_quadratic_formula_solution(equation: str, a: int, b: int, c: int) ->
         f"$$\nx = \\frac{{{-b} \\pm \\sqrt{{{discriminant}}}}}{{{2 * a}}}\n$$\n\n"
         f"### Final Answer\n\n"
         f"$$\n\\boxed{{x = \\frac{{{-b} \\pm \\sqrt{{{discriminant}}}}}{{{2 * a}}}}}\n$$"
+    )
+
+
+def _format_arithmetic_solution(expression: str, value: int | float) -> str:
+    value_text = _format_number(value)
+
+    return (
+        f"To calculate:\n\n"
+        f"$$\n{expression} = ?\n$$\n\n"
+        f"### Step 1: Use the order of operations\n\n"
+        "Complete brackets first, then multiplication/division, then addition/subtraction.\n\n"
+        f"### Step 2: Simplify\n\n"
+        f"$$\n{expression} = {value_text}\n$$\n\n"
+        f"### Final Answer\n\n"
+        f"$$\n\\boxed{{{value_text}}}\n$$"
     )
 
 
@@ -445,6 +607,13 @@ def _format_equation(a: int, b: int, c: int) -> str:
     return f"{''.join(terms)} = 0"
 
 
+def _format_linear_equation(b: int, c: int) -> str:
+    terms = [_format_polynomial_term(b, "x", is_first=True)]
+    if c:
+        terms.append(_format_polynomial_term(c, ""))
+    return f"{''.join(terms)} = 0"
+
+
 def _format_polynomial_term(coefficient: int, variable: str, is_first: bool = False) -> str:
     sign = "-" if coefficient < 0 else "+"
     abs_coefficient = abs(coefficient)
@@ -454,6 +623,12 @@ def _format_polynomial_term(coefficient: int, variable: str, is_first: bool = Fa
         return f"-{value}" if coefficient < 0 else value
 
     return f" {sign} {value}"
+
+
+def _format_number(value: int | float) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 def _chunk_text(text: str) -> Iterable[str]:
@@ -474,10 +649,10 @@ def _format_response(
 ) -> str:
     bullet_points = "\n".join(f"- {point}" for point in points)
     return (
-        f"### {subject} answer\n\n"
+        f"### {subject} Answer\n\n"
         f"**Question:** {question}\n\n"
-        f"**Short answer:** {summary}\n\n"
-        f"**Key points:**\n{bullet_points}\n\n"
+        f"**Direct answer:** {summary}\n\n"
+        f"**Explanation:**\n{bullet_points}\n\n"
         f"**Example / exam tip:** {example}\n\n"
-        f"**How to write it in an exam:** {focus}."
+        f"**Exam point:** {focus}."
     )

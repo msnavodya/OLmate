@@ -64,10 +64,12 @@ export default function RegisterPage() {
                   <User size={18} className="text-slate-400" />
                   <input
                     type="text"
+                    name="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full bg-transparent px-3 py-3 text-slate-900 placeholder:text-slate-400"
                     placeholder="Your name"
+                    autoComplete="name"
                     required
                   />
                 </div>
@@ -79,10 +81,12 @@ export default function RegisterPage() {
                   <Mail size={18} className="text-slate-400" />
                   <input
                     type="email"
+                    name="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full bg-transparent px-3 py-3 text-slate-900 placeholder:text-slate-400"
                     placeholder="you@example.com"
+                    autoComplete="username"
                     required
                   />
                 </div>
@@ -94,10 +98,12 @@ export default function RegisterPage() {
                   <Lock size={18} className="text-slate-400" />
                   <input
                     type="password"
+                    name="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full bg-transparent px-3 py-3 text-slate-900 placeholder:text-slate-400"
                     placeholder="Create a password"
+                    autoComplete="new-password"
                     required
                   />
                 </div>
@@ -109,10 +115,12 @@ export default function RegisterPage() {
                   <ShieldCheck size={18} className="text-slate-400" />
                   <input
                     type="password"
+                    name="confirmPassword"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full bg-transparent px-3 py-3 text-slate-900 placeholder:text-slate-400"
                     placeholder="Confirm your password"
+                    autoComplete="new-password"
                     required
                   />
                 </div>
