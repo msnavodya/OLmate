@@ -100,7 +100,7 @@ Frontend:
 Frontend `.env`:
 
 ```env
-VITE_API_URL=http://localhost:8000/api
+VITE_API_URL=http://localhost:8001/api
 ```
 
 Backend `.env`:

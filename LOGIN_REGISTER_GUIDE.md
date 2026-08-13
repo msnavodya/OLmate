@@ -205,7 +205,7 @@ python main.py
 ### Frontend doesn't see backend
 ```bash
 # In frontend .env, make sure:
-VITE_API_URL=http://localhost:8000/api
+VITE_API_URL=http://localhost:8001/api
 
 # Frontend should show backend responses at:
 # http://localhost:8000/api/health

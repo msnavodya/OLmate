@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 
-export const API_BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000/api';
+export const API_BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8001/api';
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
