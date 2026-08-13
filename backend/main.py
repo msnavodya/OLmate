@@ -1,10 +1,33 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import logging
+import logging.handlers
 import os
 from config import settings
 from app.database.mongodb import MongoDatabase
 from app.server import parse_port, select_available_port
+
+# Configure basic logging for the application
+log_dir = os.path.dirname(settings.LOG_FILE)
+if log_dir and not os.path.exists(log_dir):
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+    except Exception:
+        pass
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.handlers.RotatingFileHandler(settings.LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3),
+    ],
+)
+logger = logging.getLogger("olmate")
+
+if settings.SECRET_KEY == "your-secret-key-change-in-production":
+    logger.warning("Using default SECRET_KEY — change this in production!")
 
 
 @asynccontextmanager

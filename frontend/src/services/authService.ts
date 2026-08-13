@@ -77,7 +77,28 @@ export const authService = {
   },
 
   getStoredToken(): string | null {
-    return localStorage.getItem('access_token');
+    const token = localStorage.getItem('access_token');
+    if (!token) return null;
+
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return token;
+      const payload = JSON.parse(atob(parts[1]));
+      if (payload.exp && typeof payload.exp === 'number') {
+        const now = Math.floor(Date.now() / 1000);
+        if (payload.exp < now) {
+          // Token expired — clear stored auth
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('user');
+          return null;
+        }
+      }
+    } catch {
+      // If parsing fails, return the raw token and let server validate it
+      return token;
+    }
+
+    return token;
   },
 
   getStoredUser() {

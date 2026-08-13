@@ -22,6 +22,11 @@ class Settings:
     
     # OpenAI
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    # Debug / security toggles
+    DEBUG: bool = os.getenv("DEBUG", "False").lower() in ("1", "true", "yes")
+    ALLOW_INSECURE_FALLBACK: bool = os.getenv("ALLOW_INSECURE_FALLBACK", "False").lower() in ("1", "true", "yes")
+    # Logging
+    LOG_FILE: str = os.getenv("LOG_FILE", str(PROJECT_ROOT / "backend.log"))
     
     # CORS
     CORS_ORIGINS: list = [

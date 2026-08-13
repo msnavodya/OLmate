@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+import logging
 from datetime import timedelta
 from bson.objectid import ObjectId
 from app.models.user import PasswordChange, UserRegister, UserLogin, UserResponse, UserUpdate, TokenResponse
@@ -7,6 +8,8 @@ from app.database.mongodb import get_database
 from config import settings
 
 router = APIRouter()
+
+logger = logging.getLogger("olmate.auth.routes")
 
 def get_db():
     return get_database()
@@ -29,9 +32,11 @@ async def register(user: UserRegister, db=Depends(get_db)):
             detail="Password must be at least 6 characters"
         )
     
+    logger.info("Register attempt for email=%s", email)
     # Check if user exists
     existing_user = users_collection.find_one({"email": email})
     if existing_user:
+        logger.warning("Registration failed: email already registered %s", email)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
@@ -56,6 +61,8 @@ async def register(user: UserRegister, db=Depends(get_db)):
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     
+    logger.info("User registered id=%s email=%s", user_id, email)
+
     return TokenResponse(
         access_token=access_token,
         user={
@@ -70,10 +77,12 @@ async def register(user: UserRegister, db=Depends(get_db)):
 async def login(credentials: UserLogin, db=Depends(get_db)):
     users_collection = db["users"]
     email = credentials.email.lower()
-    
+    logger.info("Login attempt for email=%s", email)
+
     # Find user
     user = users_collection.find_one({"email": email})
     if not user or not verify_password(credentials.password, user["password_hash"]):
+        logger.warning("Login failed for email=%s", email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
