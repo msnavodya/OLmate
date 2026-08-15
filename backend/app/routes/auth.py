@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from bson.objectid import ObjectId
 from app.models.user import PasswordChange, UserRegister, UserLogin, UserResponse, UserUpdate, TokenResponse
 from app.auth.jwt_handler import get_current_user_id, hash_password, verify_password, create_access_token
@@ -17,7 +17,7 @@ def get_db():
 @router.post("/register", response_model=TokenResponse)
 async def register(user: UserRegister, db=Depends(get_db)):
     users_collection = db["users"]
-    email = user.email.lower()
+    email = user.email.strip().lower()
     name = user.name.strip()
 
     if len(name) < 2:
@@ -49,7 +49,7 @@ async def register(user: UserRegister, db=Depends(get_db)):
         "email": email,
         "password_hash": hashed_password,
         "role": user.role,
-        "created_at": __import__("datetime").datetime.utcnow()
+        "created_at": datetime.utcnow()
     }
     
     result = users_collection.insert_one(new_user)
@@ -76,12 +76,12 @@ async def register(user: UserRegister, db=Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 async def login(credentials: UserLogin, db=Depends(get_db)):
     users_collection = db["users"]
-    email = credentials.email.lower()
+    email = credentials.email.strip().lower()
     logger.info("Login attempt for email=%s", email)
 
     # Find user
     user = users_collection.find_one({"email": email})
-    if not user or not verify_password(credentials.password, user["password_hash"]):
+    if not user or not verify_password(credentials.password, user.get("password_hash")):
         logger.warning("Login failed for email=%s", email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -129,7 +129,7 @@ async def update_profile(
         changes["name"] = name
 
     if updates.email is not None:
-        email = updates.email.lower()
+        email = updates.email.strip().lower()
         existing_user = users_collection.find_one({"email": email})
         if existing_user and str(existing_user["_id"]) != current_user_id:
             raise HTTPException(

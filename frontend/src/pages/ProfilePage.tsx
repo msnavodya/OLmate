@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { getErrorMessage } from '../utils/helpers';
 import {
   AlertCircle,
   ArrowLeft,
@@ -257,23 +258,4 @@ function StatusMessage({ tone, message }: { tone: 'success' | 'error'; message: 
       {message}
     </div>
   );
-}
-
-function getErrorMessage(error: unknown, fallback: string) {
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'response' in error &&
-    typeof error.response === 'object' &&
-    error.response !== null &&
-    'data' in error.response &&
-    typeof error.response.data === 'object' &&
-    error.response.data !== null &&
-    'detail' in error.response.data &&
-    typeof error.response.data.detail === 'string'
-  ) {
-    return error.response.data.detail;
-  }
-
-  return fallback;
 }

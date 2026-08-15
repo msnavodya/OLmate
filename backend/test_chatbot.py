@@ -52,6 +52,50 @@ def test_math_arithmetic_uses_worked_solution():
     assert "\\boxed{18}" in answer
 
 
+def test_math_ratio_word_problem_uses_friendly_steps():
+    answer = get_ai_response(
+        "The ratio of boys to girls in a class is 3 : 5. If there are 40 students altogether, find the number of boys and girls.",
+        "Mathematics",
+    )
+
+    assert "Question 1" in answer
+    assert "**Step 1: Find the total number of parts**" in answer
+    assert "3 + 5 = 8" in answer
+    assert "40 \\div 8 = 5" in answer
+    assert "3 \\times 5 = 15" in answer
+    assert "5 \\times 5 = 25" in answer
+    assert "**Answer: 15 boys and 25 girls**" in answer
+
+
+def test_math_triangle_area_word_problem_uses_friendly_steps():
+    answer = get_ai_response(
+        "Find the area of a triangle with a base of 12 cm and height of 8 cm.",
+        "Mathematics",
+    )
+
+    assert "Question 1" in answer
+    assert "**Step 1: Use the formula**" in answer
+    assert "\\frac{1}{2} \\times \\text{base} \\times \\text{height}" in answer
+    assert "\\frac{1}{2} \\times 12 \\times 8" in answer
+    assert "= 6 \\times 8" in answer
+    assert "**Answer: 48 cm" in answer
+
+
+def test_math_profit_percentage_word_problem_uses_friendly_steps_with_context():
+    question = "A shopkeeper buys an item for Rs. 4,000 and sells it for Rs. 4,800. Find the percentage profit."
+    context = retrieve_relevant_context(question, "Mathematics")
+
+    answer = get_ai_response(question, "Mathematics", context)
+
+    assert "Question 1" in answer
+    assert "**Direct answer:**" not in answer
+    assert "Business is an economic activity" not in answer
+    assert "**Step 1: Find the profit**" in answer
+    assert "4800 - 4000 = 800" in answer
+    assert "\\frac{800}{4000} \\times 100" in answer
+    assert "**Answer: 20% profit**" in answer
+
+
 def test_symbolic_math_query_does_not_retrieve_unrelated_percentage_notes():
     context = retrieve_relevant_context("Solve x^2 - 9 = 0", "Mathematics")
 

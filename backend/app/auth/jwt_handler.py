@@ -12,7 +12,7 @@ logger = logging.getLogger("olmate.auth")
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# Prefer strong hashing (argon2). Only allow insecure fallback when explicitly enabled.
+# Prefer strong hashing (argon2). Older bcrypt hashes are verified directly.
 try:
     pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 except Exception:
@@ -40,8 +40,14 @@ def hash_password(password: str) -> str:
         raise
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_password(plain_password: str, hashed_password: str | None) -> bool:
     """Verify password against hash. Supports dev fallback format beginning with 'dev$'."""
+    if not plain_password or not hashed_password:
+        return False
+
+    if _is_bcrypt_hash(hashed_password):
+        return _verify_bcrypt_password(plain_password, hashed_password)
+
     try:
         return pwd_context.verify(plain_password, hashed_password)
     except Exception:
@@ -54,6 +60,23 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
                     expected_hash = parts[2]
                     actual_hash = hashlib.sha256((plain_password + salt).encode()).hexdigest()
                     return actual_hash == expected_hash
+        return False
+
+
+def _is_bcrypt_hash(hashed_password: str) -> bool:
+    return hashed_password.startswith(("$2a$", "$2b$", "$2y$"))
+
+
+def _verify_bcrypt_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        import bcrypt
+
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except Exception:
+        logger.exception("bcrypt password verification failed")
         return False
 
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/useAuth';
 import { authService } from '../services/authService';
+import { getErrorMessage } from '../utils/helpers';
 import { ArrowRight, BookOpenCheck, Check, Loader, Lock, Mail, Sparkles } from 'lucide-react';
 
 const highlights = ['Syllabus-aware answers', 'Saved chat history', 'Built for O/L revision'];
@@ -26,8 +27,8 @@ export default function LoginPage() {
         authService.clearRememberedEmail();
       }
       navigate('/dashboard');
-    } catch (err) {
-      setError('Invalid email or password');
+    } catch (error) {
+      setError(getErrorMessage(error, 'Invalid email or password'));
     }
   };
 

@@ -12,6 +12,9 @@ from typing import Iterable
 
 from config import settings
 
+QUESTION_ICON = "\U0001f9ee"
+ANSWER_ICON = "\u2705"
+
 SYSTEM_PROMPT = '''
 You are OL Mate, an AI tutor for Sri Lankan GCE Ordinary Level students.
 
@@ -21,8 +24,16 @@ Rules:
 - Answer the student's exact question first. Do not start with generic revision notes.
 - Use the supplied context only when it clearly matches the question. Ignore unrelated context.
 - Give step-by-step solutions for mathematics and calculations.
-- For mathematics, format answers like ChatGPT: brief intro, display LaTeX equations,
-  clear step headings, a boxed final answer, and a check or alternative method when useful.
+- For mathematics and calculation questions, use this exact friendly pattern:
+  🧮 Question 1
+  **Restate the question briefly.**
+  **Step 1: Name the first calculation**
+  Show the formula and substitution clearly.
+  **Step 2: Name the next calculation**
+  Show the final calculation clearly.
+  ✅ **Answer: final answer**
+- Use simple arithmetic notation for percentages and money word problems.
+- Use display LaTeX for algebraic equations when it improves readability.
 - Use $$...$$ for display math and \\(...\\) for inline math.
 - For theory subjects, use short sections: Direct answer, Explanation, Exam point.
 - Keep answers concise but clear. Avoid long memorized lists unless the question asks for them.
@@ -120,6 +131,22 @@ def stream_ai_response(question: str, subject: str, context: str = "") -> Iterab
 
 def _try_local_math_first(question: str, subject: str) -> str | None:
     """Prefer deterministic working for equations the local solver understands."""
+    profit_loss = _parse_profit_loss_problem(question)
+    if profit_loss:
+        return _format_profit_loss_solution(question, *profit_loss)
+
+    discount = _parse_discount_problem(question)
+    if discount:
+        return _format_discount_solution(question, *discount)
+
+    ratio = _parse_ratio_problem(question)
+    if ratio:
+        return _format_ratio_solution(question, *ratio)
+
+    triangle_area = _parse_triangle_area_problem(question)
+    if triangle_area:
+        return _format_triangle_area_solution(question, *triangle_area)
+
     if subject != "Mathematics":
         return None
 
@@ -184,7 +211,9 @@ def _build_user_prompt(question: str, subject: str, context: str) -> str:
         "- Solve or answer this exact question.\n"
         "- If the context is unrelated, ignore it completely.\n"
         "- Do not mention percentages, ratios, or other topics unless the question asks for them.\n"
-        "- For math, show clean working and finish with a boxed final answer."
+        "- For math/calculations, format as: 🧮 Question 1, bold question, Step 1, Step 2, ✅ Answer.\n"
+        "- For math word problems with numbers, solve the calculation directly; do not return Direct answer / Explanation sections.\n"
+        "- For money answers, write the final answer as Rs. with comma separators."
     )
 
 
@@ -372,6 +401,22 @@ def _extract_arithmetic_expression(text: str) -> str | None:
 
 
 def _try_worked_math_solution(question: str) -> str | None:
+    profit_loss = _parse_profit_loss_problem(question)
+    if profit_loss:
+        return _format_profit_loss_solution(question, *profit_loss)
+
+    discount = _parse_discount_problem(question)
+    if discount:
+        return _format_discount_solution(question, *discount)
+
+    ratio = _parse_ratio_problem(question)
+    if ratio:
+        return _format_ratio_solution(question, *ratio)
+
+    triangle_area = _parse_triangle_area_problem(question)
+    if triangle_area:
+        return _format_triangle_area_solution(question, *triangle_area)
+
     quadratic = _parse_quadratic_equation(question)
     if quadratic:
         return _format_quadratic_solution(*quadratic)
@@ -381,6 +426,282 @@ def _try_worked_math_solution(question: str) -> str | None:
         return _format_linear_solution(*linear)
 
     return None
+
+
+def _parse_profit_loss_problem(question: str) -> tuple[float, float] | None:
+    lower_question = question.lower()
+    if not re.search(r"\b(profit|loss|gain)\b", lower_question):
+        return None
+    if not re.search(r"\b(percentage|percent|%)\b", lower_question):
+        return None
+
+    cost_price = _find_money_near_keywords(
+        lower_question,
+        (
+            "buys an item for",
+            "bought an item for",
+            "buys it for",
+            "bought it for",
+            "cost price is",
+            "cost price",
+            "cp",
+        ),
+    )
+    selling_price = _find_money_near_keywords(
+        lower_question,
+        (
+            "sells it for",
+            "sold it for",
+            "sells for",
+            "sold for",
+            "selling price is",
+            "selling price",
+            "sp",
+        ),
+    )
+
+    if cost_price is None or selling_price is None:
+        money_values = _extract_money_values(lower_question)
+        if len(money_values) >= 2:
+            cost_price, selling_price = money_values[0], money_values[1]
+
+    if cost_price is None or selling_price is None:
+        return None
+    if cost_price <= 0 or selling_price <= 0:
+        return None
+
+    return cost_price, selling_price
+
+
+def _find_money_near_keywords(text: str, keywords: tuple[str, ...]) -> float | None:
+    for keyword in keywords:
+        keyword_index = text.find(keyword)
+        if keyword_index == -1:
+            continue
+
+        nearby_text = text[keyword_index + len(keyword): keyword_index + len(keyword) + 40]
+        money_match = re.search(
+            r"(?:rs\.?|rupees?)\s*([0-9][0-9,]*(?:\.\d+)?)|([0-9][0-9,]*(?:\.\d+)?)",
+            nearby_text,
+        )
+        if money_match:
+            value = money_match.group(1) or money_match.group(2)
+            return float(value.replace(",", ""))
+
+    return None
+
+
+def _extract_money_values(text: str) -> list[float]:
+    values = []
+    for match in re.finditer(
+        r"(?:rs\.?|rupees?)\s*([0-9][0-9,]*(?:\.\d+)?)|([0-9][0-9,]*(?:\.\d+)?)\s*(?:rs\.?|rupees?)",
+        text,
+    ):
+        value = match.group(1) or match.group(2)
+        values.append(float(value.replace(",", "")))
+    return values
+
+
+def _parse_discount_problem(question: str) -> tuple[float, float] | None:
+    lower_question = question.lower()
+    if "discount" not in lower_question:
+        return None
+    if not re.search(r"\b(selling price|sale price|sold|pay|price after discount)\b", lower_question):
+        return None
+
+    price_match = re.search(
+        r"(?:rs\.?|rupees?)\s*([0-9][0-9,]*(?:\.\d+)?)|([0-9][0-9,]*(?:\.\d+)?)\s*(?:rs\.?|rupees?)",
+        lower_question,
+    )
+    percent_match = re.search(r"([0-9]+(?:\.\d+)?)\s*%\s*(?:discount|off)", lower_question)
+
+    if not price_match or not percent_match:
+        return None
+
+    price_text = price_match.group(1) or price_match.group(2)
+    original_price = float(price_text.replace(",", ""))
+    discount_percent = float(percent_match.group(1))
+    return original_price, discount_percent
+
+
+def _parse_ratio_problem(question: str) -> tuple[str, str, float, float, float] | None:
+    lower_question = question.lower()
+    if "ratio" not in lower_question:
+        return None
+
+    ratio_match = re.search(
+        r"\bratio of\s+([a-zA-Z]+)\s+to\s+([a-zA-Z]+).*?\bis\s+"
+        r"([0-9]+(?:\.\d+)?)\s*:\s*([0-9]+(?:\.\d+)?)",
+        lower_question,
+    )
+    if not ratio_match:
+        return None
+
+    after_ratio = lower_question[ratio_match.end():]
+    if not re.search(r"\b(altogether|in all|total|students|pupils|people|members|there are)\b", after_ratio):
+        return None
+
+    total_match = re.search(r"([0-9][0-9,]*(?:\.\d+)?)", after_ratio)
+    if not total_match:
+        return None
+
+    first_label, second_label = ratio_match.group(1), ratio_match.group(2)
+    first_parts = float(ratio_match.group(3))
+    second_parts = float(ratio_match.group(4))
+    total = float(total_match.group(1).replace(",", ""))
+
+    if first_parts <= 0 or second_parts <= 0 or total <= 0:
+        return None
+
+    return first_label, second_label, first_parts, second_parts, total
+
+
+def _parse_triangle_area_problem(question: str) -> tuple[float, float, str] | None:
+    lower_question = question.lower()
+    if "triangle" not in lower_question or "area" not in lower_question:
+        return None
+
+    unit_pattern = r"(?:mm|cm|m|km)"
+    base_match = re.search(
+        rf"\bbase(?:\s+of)?\s+([0-9][0-9,]*(?:\.\d+)?)\s*({unit_pattern})?\b",
+        lower_question,
+    ) or re.search(
+        rf"\b([0-9][0-9,]*(?:\.\d+)?)\s*({unit_pattern})?\s+base\b",
+        lower_question,
+    )
+    height_match = re.search(
+        rf"\bheight(?:\s+of)?\s+([0-9][0-9,]*(?:\.\d+)?)\s*({unit_pattern})?\b",
+        lower_question,
+    ) or re.search(
+        rf"\b([0-9][0-9,]*(?:\.\d+)?)\s*({unit_pattern})?\s+height\b",
+        lower_question,
+    )
+
+    if not base_match or not height_match:
+        return None
+
+    base = float(base_match.group(1).replace(",", ""))
+    height = float(height_match.group(1).replace(",", ""))
+    unit = base_match.group(2) or height_match.group(2) or ""
+
+    if base <= 0 or height <= 0:
+        return None
+
+    return base, height, unit
+
+
+def _format_profit_loss_solution(question: str, cost_price: float, selling_price: float) -> str:
+    difference = selling_price - cost_price
+    is_profit = difference >= 0
+    result_label = "profit" if is_profit else "loss"
+    amount = abs(difference)
+    percentage = amount / cost_price * 100
+
+    cost_text = _format_money_number(cost_price, use_commas=False)
+    selling_text = _format_money_number(selling_price, use_commas=False)
+    amount_text = _format_money_number(amount, use_commas=False)
+    percentage_text = _format_number(percentage)
+
+    first_calculation = (
+        f"{selling_text} - {cost_text} = {amount_text}"
+        if is_profit
+        else f"{cost_text} - {selling_text} = {amount_text}"
+    )
+
+    return (
+        f"{QUESTION_ICON} Question 1\n\n"
+        f"**{question}**\n\n"
+        f"**Step 1: Find the {result_label}**\n\n"
+        f"{'Selling price - Cost price' if is_profit else 'Cost price - Selling price'}\n\n"
+        f"$$\n{first_calculation}\n$$\n\n"
+        f"**Step 2: Find the percentage {result_label}**\n\n"
+        f"$$\n\\frac{{{result_label}}}{{\\text{{cost price}}}} \\times 100\n$$\n\n"
+        f"$$\n= \\frac{{{amount_text}}}{{{cost_text}}} \\times 100\n$$\n\n"
+        f"$$\n= {percentage_text}\\%\n$$\n\n"
+        f"{ANSWER_ICON} **Answer: {percentage_text}% {result_label}**"
+    )
+
+
+def _format_discount_solution(question: str, original_price: float, discount_percent: float) -> str:
+    discount_amount = original_price * discount_percent / 100
+    selling_price = original_price - discount_amount
+
+    original_text = _format_money_number(original_price, use_commas=False)
+    percent_text = _format_number(discount_percent)
+    discount_text = _format_money_number(discount_amount, use_commas=False)
+    selling_text = _format_money_number(selling_price, use_commas=False)
+    final_text = _format_money_number(selling_price, use_commas=True)
+
+    return (
+        f"{QUESTION_ICON} Question 1\n\n"
+        f"**{question}**\n\n"
+        "**Step 1: Find the discount**\n\n"
+        f"{percent_text}% of {original_text}\n\n"
+        f"= {percent_text}/100 x {original_text}\n\n"
+        f"= {discount_text}\n\n"
+        "**Step 2: Find the selling price**\n\n"
+        f"{original_text} - {discount_text} = {selling_text}\n\n"
+        f"{ANSWER_ICON} **Answer: Rs. {final_text}**"
+    )
+
+
+def _format_ratio_solution(
+    question: str,
+    first_label: str,
+    second_label: str,
+    first_parts: float,
+    second_parts: float,
+    total: float,
+) -> str:
+    total_parts = first_parts + second_parts
+    one_part = total / total_parts
+    first_count = first_parts * one_part
+    second_count = second_parts * one_part
+
+    first_parts_text = _format_number(first_parts)
+    second_parts_text = _format_number(second_parts)
+    total_parts_text = _format_number(total_parts)
+    total_text = _format_number(total)
+    one_part_text = _format_number(one_part)
+    first_count_text = _format_number(first_count)
+    second_count_text = _format_number(second_count)
+
+    return (
+        f"{QUESTION_ICON} Question 1\n\n"
+        f"**{question}**\n\n"
+        "**Step 1: Find the total number of parts**\n\n"
+        f"$$\n{first_parts_text} + {second_parts_text} = {total_parts_text}\n$$\n\n"
+        "**Step 2: Find the value of one part**\n\n"
+        f"$$\n{total_text} \\div {total_parts_text} = {one_part_text}\n$$\n\n"
+        f"**Step 3: Find the number of {first_label}**\n\n"
+        f"$$\n{first_parts_text} \\times {one_part_text} = {first_count_text}\n$$\n\n"
+        f"**Step 4: Find the number of {second_label}**\n\n"
+        f"$$\n{second_parts_text} \\times {one_part_text} = {second_count_text}\n$$\n\n"
+        f"{ANSWER_ICON} **Answer: {first_count_text} {first_label} and {second_count_text} {second_label}**"
+    )
+
+
+def _format_triangle_area_solution(question: str, base: float, height: float, unit: str) -> str:
+    area = 0.5 * base * height
+
+    base_text = _format_number(base)
+    height_text = _format_number(height)
+    half_base_text = _format_number(base / 2)
+    area_text = _format_number(area)
+    unit_text = _format_square_unit(unit)
+
+    return (
+        f"{QUESTION_ICON} Question 1\n\n"
+        f"**{question}**\n\n"
+        "**Step 1: Use the formula**\n\n"
+        "$$\n\\text{Area} = \\frac{1}{2} \\times \\text{base} \\times \\text{height}\n$$\n\n"
+        "**Step 2: Substitute the values**\n\n"
+        f"$$\n= \\frac{{1}}{{2}} \\times {base_text} \\times {height_text}\n$$\n\n"
+        "**Step 3: Calculate**\n\n"
+        f"$$\n= {half_base_text} \\times {height_text}\n$$\n\n"
+        f"$$\n= {area_text}\n$$\n\n"
+        f"{ANSWER_ICON} **Answer: {area_text} {unit_text}**"
+    )
 
 
 def _parse_quadratic_equation(question: str) -> tuple[str, int, int, int] | None:
@@ -629,6 +950,20 @@ def _format_number(value: int | float) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     return str(value)
+
+
+def _format_money_number(value: int | float, use_commas: bool) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return f"{int(value):,}" if use_commas else str(int(value))
+
+    formatted = f"{value:,.2f}" if use_commas else f"{value:.2f}"
+    return formatted.rstrip("0").rstrip(".")
+
+
+def _format_square_unit(unit: str) -> str:
+    if not unit:
+        return "square units"
+    return f"{unit}\u00b2"
 
 
 def _chunk_text(text: str) -> Iterable[str]:

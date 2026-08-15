@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/useAuth';
+import { getErrorMessage } from '../utils/helpers';
 import { ArrowRight, BookOpenCheck, CheckCircle2, Loader, Lock, Mail, ShieldCheck, User } from 'lucide-react';
 
 const benefits = [
@@ -35,8 +36,13 @@ export default function RegisterPage() {
     try {
       await register(name, email, password);
       navigate('/dashboard');
-    } catch (err) {
-      setError('Registration failed. Email might already be registered.');
+    } catch (error) {
+      const message = getErrorMessage(error, 'Registration failed. Please check your details and try again.');
+      setError(
+        message === 'Email already registered'
+          ? 'This email is already registered. Please log in instead.'
+          : message
+      );
     }
   };
 
